@@ -22,8 +22,8 @@ public:
         strlcpy(config.wifiSSID, "", sizeof(config.wifiSSID));
         strlcpy(config.wifiPassword, "", sizeof(config.wifiPassword));
         strlcpy(config.owmApiKey, "", sizeof(config.owmApiKey));
-        strlcpy(config.owmLocationId, "2514824", sizeof(config.owmLocationId));
-        strlcpy(config.locationName, "Los Barrios", sizeof(config.locationName));
+        strlcpy(config.owmLocationId, "", sizeof(config.owmLocationId));
+        strlcpy(config.locationName, "", sizeof(config.locationName));
         config.owmLanguage = "es";
         strlcpy(config.timezone, "Europe/Madrid", sizeof(config.timezone));
         config.isMetric = true;
@@ -73,8 +73,8 @@ public:
         
         // OWM
         strlcpy(config.owmApiKey, doc["owm_key"] | "", sizeof(config.owmApiKey));
-        strlcpy(config.owmLocationId, doc["owm_loc_id"] | "2514824", sizeof(config.owmLocationId));
-        strlcpy(config.locationName, doc["loc_name"] | "Los Barrios", sizeof(config.locationName));
+        strlcpy(config.owmLocationId, doc["owm_loc_id"] | "", sizeof(config.owmLocationId));
+        strlcpy(config.locationName, doc["loc_name"] | "", sizeof(config.locationName));
         config.owmLanguage = doc["owm_lang"] | "es";
         
         // Timezone
