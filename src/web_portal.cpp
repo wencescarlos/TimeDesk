@@ -57,7 +57,7 @@ void WebPortal::setupRoutes() {
         [this]() {
             server.sendHeader("Connection", "close");
             if (Update.hasError()) {
-                String err = String("{\"ok\":false,\"error\":\"") + Update.errorString() + "\"}";
+                String err = String("{\"ok\":false,\"error\":\"") + Update.getErrorString() + "\"}";
                 server.send(500, "application/json", err);
             } else {
                 server.send(200, "application/json", "{\"ok\":true}");
@@ -167,7 +167,7 @@ void WebPortal::handleUpdateUpload() {
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
         Serial.printf("[OTA] Iniciando actualización: %s\n", upload.filename.c_str());
-        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+        if (!Update.begin(ESP.getFreeSketchSpace())) {
             Update.printError(Serial);
         }
     } else if (upload.status == UPLOAD_FILE_WRITE) {
