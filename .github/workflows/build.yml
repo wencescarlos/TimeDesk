@@ -1,0 +1,53 @@
+name: Build Firmware
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Caché de paquetes PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/.cache
+            .pio
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar PlatformIO Core
+        run: pip install platformio
+
+      - name: Compilar firmware
+        run: pio run --environment nodemcuv2
+
+      - name: Preparar artefacto
+        run: |
+          mkdir -p artifacts
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+          cp .pio/build/nodemcuv2/firmware.bin "artifacts/TimeDesk-firmware-${SHORT_SHA}.bin"
+          echo "Firmware listo: TimeDesk-firmware-${SHORT_SHA}.bin"
+          ls -lh artifacts/
+
+      - name: Subir firmware como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: TimeDesk-firmware-${{ github.sha }}
+          path: artifacts/
+          retention-days: 30
+          if-no-files-found: error

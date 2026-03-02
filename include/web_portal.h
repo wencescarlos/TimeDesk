@@ -38,10 +38,13 @@ private:
     void handleScheduleSave();
     void handleScanWifi();
     void handleReset();
+    void handleUpdate();
+    void handleUpdateUpload();
     void handleNotFound();
-    
+
     String generateHTML();
     String generateScheduleHTML();
+    String generateUpdateHTML();
     String getTimezoneOptions();
     String getWifiNetworks();
 };

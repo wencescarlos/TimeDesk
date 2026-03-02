@@ -1,4 +1,5 @@
 #include "web_portal.h"
+#include <Updater.h>
 
 WebPortal::WebPortal(ConfigManager *cfgMgr) 
     : server(WEB_SERVER_PORT), configMgr(cfgMgr), apMode(false), restartRequested(false) {}
@@ -51,6 +52,20 @@ void WebPortal::setupRoutes() {
     server.on("/schedule-save", HTTP_POST, [this]() { handleScheduleSave(); });
     server.on("/scan", HTTP_GET, [this]() { handleScanWifi(); });
     server.on("/reset", HTTP_POST, [this]() { handleReset(); });
+    server.on("/update", HTTP_GET, [this]() { handleUpdate(); });
+    server.on("/update", HTTP_POST,
+        [this]() {
+            server.sendHeader("Connection", "close");
+            if (Update.hasError()) {
+                String err = String("{\"ok\":false,\"error\":\"") + Update.errorString() + "\"}";
+                server.send(500, "application/json", err);
+            } else {
+                server.send(200, "application/json", "{\"ok\":true}");
+                restartRequested = true;
+            }
+        },
+        [this]() { handleUpdateUpload(); }
+    );
     server.onNotFound([this]() { handleNotFound(); });
 }
 
@@ -142,6 +157,30 @@ void WebPortal::handleReset() {
         "<style>body{font-family:sans-serif;background:#1a1a2e;color:#eee;text-align:center;padding:40px}</style>"
         "</head><body><h2>🔄 Configuración reseteada</h2><p>Reiniciando...</p></body></html>"));
     restartRequested = true;
+}
+
+void WebPortal::handleUpdate() {
+    server.send(200, "text/html", generateUpdateHTML());
+}
+
+void WebPortal::handleUpdateUpload() {
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+        Serial.printf("[OTA] Iniciando actualización: %s\n", upload.filename.c_str());
+        if (!Update.begin(UPDATE_SIZE_UNKNOWN)) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+        if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+            Update.printError(Serial);
+        }
+    } else if (upload.status == UPLOAD_FILE_END) {
+        if (Update.end(true)) {
+            Serial.printf("[OTA] Completado: %u bytes\n", upload.totalSize);
+        } else {
+            Update.printError(Serial);
+        }
+    }
 }
 
 void WebPortal::handleNotFound() {
@@ -253,7 +292,10 @@ String WebPortal::generateScheduleHTML() {
     html += F("</strong></div>");
     
     html += F("<button type='submit'>💾 Guardar Horario</button>"
-        "</form><a href='/'>← Volver al inicio</a></div></body></html>");
+        "</form>"
+        "<a href='/'>← Inicio</a>"
+        "<a href='/update'>🔄 Actualización OTA</a>"
+        "</div></body></html>");
     
     return html;
 }
@@ -319,6 +361,7 @@ String WebPortal::generateHTML() {
         "<a href='/'>🏠 Inicio</a>"
         "<a href='/schedule'>⏰ Horario</a>"
         "<a href='/status'>📊 Estado</a>"
+        "<a href='/update'>🔄 OTA</a>"
         "</div>");
     
     html += F("<form action='/save' method='POST'>");
@@ -433,6 +476,127 @@ String WebPortal::generateHTML() {
         "}).catch(()=>{document.getElementById('wifiList').innerHTML='<p style=\"color:#e63946\">Error al buscar</p>'});"
         "}"
         "</script></body></html>");
-    
+
+    return html;
+}
+
+String WebPortal::generateUpdateHTML() {
+    String html = F("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Actualización OTA</title>"
+        "<style>"
+        "*{box-sizing:border-box;margin:0;padding:0}"
+        "body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh}"
+        ".header{background:linear-gradient(135deg,#16213e,#1a1a2e);padding:24px;text-align:center;"
+        "border-bottom:2px solid #4cc9f0}"
+        ".header h1{font-size:1.6em;color:#4cc9f0}"
+        ".header p{color:#adb5bd;margin-top:6px}"
+        ".container{max-width:520px;margin:0 auto;padding:16px}"
+        ".card{background:#1a1a2e;border-radius:14px;padding:20px;margin:12px 0;"
+        "box-shadow:0 4px 20px rgba(0,0,0,.3)}"
+        ".card h2{color:#e0aaff;font-size:1.1em;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #333}"
+        ".warn{background:#2d1b00;border:1px solid #f4a261;border-radius:10px;padding:14px;"
+        "color:#f4a261;font-size:.9em;margin:10px 0}"
+        ".info{background:#001828;border:1px solid #4cc9f0;border-radius:10px;padding:14px;"
+        "color:#adb5bd;font-size:.9em;margin:10px 0}"
+        ".drop{border:2px dashed #4cc9f0;border-radius:10px;padding:28px;text-align:center;"
+        "color:#adb5bd;cursor:pointer;transition:all .2s;margin:12px 0}"
+        ".drop.ok{border-color:#0f3;background:rgba(0,255,51,.05)}"
+        ".drop.ok .dt{color:#0f3}"
+        "input[type=file]{display:none}"
+        ".btn{width:100%;padding:14px;border:none;border-radius:10px;font-size:1.1em;"
+        "cursor:pointer;font-weight:bold;margin-top:10px;transition:all .2s;"
+        "background:linear-gradient(135deg,#4cc9f0,#7209b7);color:#fff}"
+        ".btn:hover:not(:disabled){opacity:.85;transform:translateY(-1px)}"
+        ".btn:disabled{opacity:.4;cursor:not-allowed}"
+        ".pb{display:none;margin:14px 0}"
+        ".pb-track{height:22px;background:#16213e;border-radius:11px;overflow:hidden}"
+        ".pb-fill{height:100%;background:linear-gradient(90deg,#4cc9f0,#7209b7);width:0%;transition:width .25s}"
+        ".pb-txt{text-align:center;margin-top:6px;color:#adb5bd;font-size:.9em}"
+        ".res{margin:14px 0;padding:16px;border-radius:10px;display:none}"
+        ".res.ok{background:#001b00;border:1px solid #0f3;color:#0f3}"
+        ".res.err{background:#1b0000;border:1px solid #e63946;color:#e63946}"
+        ".nav-links{display:flex;gap:10px;justify-content:center;margin:16px 0;flex-wrap:wrap}"
+        ".nav-links a{color:#4cc9f0;text-decoration:none;padding:8px 16px;border:1px solid #4cc9f0;"
+        "border-radius:8px;font-size:.9em;transition:all .2s}"
+        ".nav-links a:hover{background:#4cc9f0;color:#000}"
+        "</style></head><body>");
+
+    html += F("<div class='header'><h1>🌤️ Estación Meteorológica</h1>"
+        "<p>Actualización de Firmware OTA</p></div>"
+        "<div class='container'>"
+        "<div class='nav-links'>"
+        "<a href='/'>🏠 Inicio</a>"
+        "<a href='/schedule'>⏰ Horario</a>"
+        "<a href='/status'>📊 Estado</a>"
+        "<a href='/update'>🔄 OTA</a>"
+        "</div>"
+        "<div class='card'>"
+        "<h2>🔄 Actualizar Firmware</h2>"
+        "<div class='warn'>⚠️ <strong>No interrumpas la actualización.</strong> "
+        "El dispositivo se reiniciará automáticamente al terminar.</div>"
+        "<div class='info'>ℹ️ Sube el archivo <strong>firmware.bin</strong> generado por PlatformIO.<br>"
+        "Ruta del archivo: <code>.pio/build/nodemcuv2/firmware.bin</code></div>"
+        "<div class='drop' id='dp' onclick='document.getElementById(\"fw\").click()'>"
+        "<div style='font-size:2.2em;margin-bottom:8px'>📁</div>"
+        "<div class='dt' id='dt'>Haz clic para seleccionar firmware.bin</div>"
+        "<div style='font-size:.8em;color:#555;margin-top:4px'>Solo archivos .bin</div>"
+        "</div>"
+        "<input type='file' id='fw' accept='.bin'>"
+        "<div class='pb' id='pb'>"
+        "<div class='pb-track'><div class='pb-fill' id='pf'></div></div>"
+        "<div class='pb-txt' id='pt'>Subiendo...</div>"
+        "</div>"
+        "<div class='res' id='rs'></div>"
+        "<button class='btn' id='ub' onclick='doUpdate()' disabled>⬆️ Actualizar Firmware</button>"
+        "</div></div>"
+        "<script>"
+        "document.getElementById('fw').addEventListener('change',function(){"
+        "if(this.files[0]){"
+        "var f=this.files[0];"
+        "document.getElementById('dt').textContent='📦 '+f.name+' ('+Math.round(f.size/1024)+' KB)';"
+        "document.getElementById('dp').classList.add('ok');"
+        "document.getElementById('ub').disabled=false;"
+        "}});"
+        "function doUpdate(){"
+        "var file=document.getElementById('fw').files[0];"
+        "if(!file)return;"
+        "document.getElementById('ub').disabled=true;"
+        "document.getElementById('rs').style.display='none';"
+        "document.getElementById('pb').style.display='block';"
+        "var xhr=new XMLHttpRequest();"
+        "var fd=new FormData();"
+        "fd.append('firmware',file);"
+        "xhr.upload.addEventListener('progress',function(e){"
+        "if(e.lengthComputable){"
+        "var p=Math.round(e.loaded/e.total*100);"
+        "document.getElementById('pf').style.width=p+'%';"
+        "document.getElementById('pt').textContent='Subiendo... '+p+'%';"
+        "}});"
+        "xhr.addEventListener('load',function(){"
+        "document.getElementById('pb').style.display='none';"
+        "var r=document.getElementById('rs');"
+        "r.style.display='block';"
+        "if(xhr.status===200){"
+        "r.className='res ok';"
+        "r.innerHTML='✅ Firmware actualizado correctamente. Reiniciando en 5 segundos...';"
+        "setTimeout(function(){location.href='/';},6000);"
+        "}else{"
+        "r.className='res err';"
+        "try{var j=JSON.parse(xhr.responseText);r.innerHTML='❌ Error: '+j.error;}"
+        "catch(e){r.innerHTML='❌ Error al actualizar el firmware';}"
+        "document.getElementById('ub').disabled=false;"
+        "}});"
+        "xhr.addEventListener('error',function(){"
+        "document.getElementById('pb').style.display='none';"
+        "var r=document.getElementById('rs');"
+        "r.style.display='block';r.className='res err';"
+        "r.innerHTML='❌ Error de conexión. Comprueba que el dispositivo sigue encendido.';"
+        "document.getElementById('ub').disabled=false;});"
+        "xhr.open('POST','/update');"
+        "xhr.send(fd);"
+        "}"
+        "</script></body></html>");
+
     return html;
 }
