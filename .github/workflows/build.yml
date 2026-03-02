@@ -36,18 +36,27 @@ jobs:
       - name: Compilar firmware
         run: pio run --environment nodemcuv2
 
+      - name: Extraer versión del firmware
+        id: version
+        run: |
+          VERSION=$(grep -oP '#define FIRMWARE_VERSION\s+"\K[^"]+' include/version.h)
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Versión detectada: ${VERSION}"
+
       - name: Preparar artefacto
         run: |
           mkdir -p artifacts
           SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
-          cp .pio/build/nodemcuv2/firmware.bin "artifacts/TimeDesk-firmware-${SHORT_SHA}.bin"
-          echo "Firmware listo: TimeDesk-firmware-${SHORT_SHA}.bin"
+          VERSION=${{ steps.version.outputs.VERSION }}
+          FILENAME="TimeDesk-firmware-v${VERSION}-${SHORT_SHA}.bin"
+          cp .pio/build/nodemcuv2/firmware.bin "artifacts/${FILENAME}"
+          echo "Firmware listo: ${FILENAME}"
           ls -lh artifacts/
 
       - name: Subir firmware como artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: TimeDesk-firmware-${{ github.sha }}
+          name: TimeDesk-firmware-v${{ steps.version.outputs.VERSION }}-${{ github.sha }}
           path: artifacts/
           retention-days: 30
           if-no-files-found: error
