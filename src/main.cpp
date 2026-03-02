@@ -32,6 +32,7 @@
 #include <Carousel.h>
 #include <ILI9341_SPI.h>
 
+#include "version.h"
 #include "config.h"
 #include "config_manager.h"
 #include "web_portal.h"
@@ -191,7 +192,8 @@ void initTime() {
 void setup() {
     Serial.begin(115200);
     Serial.println(F("\n\n================================="));
-    Serial.println(F(" Estación Meteorológica v2.0"));
+    Serial.print(F(" Estación Meteorológica v"));
+    Serial.println(F(FIRMWARE_VERSION));
     Serial.println(F(" PlatformIO + Portal Web"));
     Serial.println(F("=================================\n"));
     
@@ -907,6 +909,7 @@ void drawAbout() {
     gfx.setColor(MINI_WHITE);
     gfx.drawString(120, 2, "Informacion del dispositivo");
     
+    drawLabelValue(0, "Version:", FIRMWARE_VERSION);
     drawLabelValue(1, "Heap:", String(ESP.getFreeHeap() / 1024) + "kb");
     drawLabelValue(2, "Flash:", String(ESP.getFlashChipRealSize() / 1024 / 1024) + "MB");
     drawLabelValue(3, "WiFi:", String(WiFi.RSSI()) + "dB");
