@@ -33,7 +33,7 @@ public:
         config.screenOnMinute = 0;
         config.screenOffHour = 22;
         config.screenOffMinute = 0;
-        config.screenSleepEnabled = true;
+        config.screenSleepEnabled = false;
         config.brightness = 100;
         config.updateIntervalMin = 10;
     }
@@ -90,7 +90,7 @@ public:
         config.screenOnMinute = doc["scr_on_m"] | 0;
         config.screenOffHour = doc["scr_off_h"] | 22;
         config.screenOffMinute = doc["scr_off_m"] | 0;
-        config.screenSleepEnabled = doc["scr_sleep"] | true;
+        config.screenSleepEnabled = doc["scr_sleep"] | false;
         config.brightness = doc["brightness"] | 100;
         config.updateIntervalMin = doc["update_min"] | 10;
         
