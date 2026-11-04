@@ -11,7 +11,8 @@
  * 
  * Hardware: ESP8266 + ILI9341 TFT 240x320 + XPT2046 Touch
  * 
- * Basado en el proyecto original de ThingPulse (MIT License)
+ * Licencia MIT (ver LICENSE). Incluye código derivado de terceros bajo
+ * licencia MIT: avisos de copyright y detalles en el fichero NOTICE.
  */
 
 #include <Arduino.h>

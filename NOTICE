@@ -1,0 +1,103 @@
+TimeDesk
+Copyright (c) 2026 wencescarlos
+Licencia MIT (ver LICENSE).
+
+Este fichero recoge los componentes de terceros que TimeDesk incluye o con
+los que se enlaza el firmware, junto con sus avisos de copyright y licencias.
+
+================================================================================
+1. Código y recursos incluidos en este repositorio
+================================================================================
+
+ThingPulse ESP8266 Weather Station Color
+https://github.com/ThingPulse/esp8266-weather-station-color
+Copyright (c) 2018 ThingPulse Ltd., https://thingpulse.com
+Licencia MIT (texto completo más abajo)
+
+  Partes de TimeDesk derivan de este proyecto o se tomaron de él:
+  - src/main.cpp                  (estructura de las pantallas meteorológicas,
+                                   astronomía y navegación táctil)
+  - src/TouchControllerWS.cpp     (calibración del táctil; adaptado a LittleFS)
+  - include/TouchControllerWS.h
+  - include/ArialRounded.h        (fuentes Arial Rounded MT Bold 14 y 36)
+  - include/weathericons.h        (iconos meteorológicos)
+  - include/moonphases.h          (fuente de fases lunares)
+  - include/TZinfo.h              (tabla de zonas horarias)
+  - resources/moonphases/         (imágenes de las fases lunares)
+
+  include/TZinfo.h se generó a partir de
+  https://github.com/nayarsystems/posix_tz_db, basado en la base de datos de
+  zonas horarias de IANA (https://www.iana.org/time-zones), de dominio público.
+
+  include/moonphases.h procede de la fuente tipográfica "Moon Phases"
+  (https://www.dafont.com/moon-phases.font). Las condiciones de uso de la
+  fuente son las que indica su autor en esa página.
+
+  Texto de la licencia MIT de ThingPulse:
+
+  The MIT License (MIT)
+
+  Copyright (c) 2018 ThingPulse Ltd., https://thingpulse.com
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+================================================================================
+2. Librerías enlazadas en el firmware (las descarga PlatformIO al compilar)
+================================================================================
+
+Estas librerías no están en el repositorio, pero forman parte del firmware
+compilado que se publica en las Releases. Cada una conserva su licencia.
+
+ESP8266 Weather Station
+https://github.com/ThingPulse/esp8266-weather-station
+Copyright (c) 2015 Daniel Eichhorn; Copyright (c) 2018 ThingPulse Ltd.
+Licencia MIT
+
+Mini Grafx
+https://github.com/ThingPulse/minigrafx
+Copyright (c) 2019 ThingPulse Ltd.
+Licencia MIT
+
+JSON Streaming Parser
+https://github.com/squix78/json-streaming-parser
+Copyright (c) 2015 Daniel Eichhorn
+Licencia MIT
+
+XPT2046_Touchscreen
+https://github.com/PaulStoffregen/XPT2046_Touchscreen
+Copyright (c) 2015 Paul Stoffregen
+Licencia de tipo MIT (el aviso de copyright, el aviso de financiación del
+desarrollo y el de permiso deben conservarse; ver la cabecera de
+XPT2046_Touchscreen.h en el repositorio de la librería)
+
+ArduinoJson
+https://github.com/bblanchon/ArduinoJson
+Copyright (c) Benoit Blanchon
+Licencia MIT
+
+Núcleo Arduino para ESP8266 (incluye ESP8266WiFi, ESP8266WebServer,
+ESP8266HTTPClient, ESP8266httpUpdate, ESP8266mDNS, LittleFS y BearSSL)
+https://github.com/esp8266/Arduino
+Licencia GNU LGPL 2.1, salvo los componentes que indiquen otra en su código.
+El código fuente completo de TimeDesk está publicado en este repositorio, lo
+que permite volver a compilar y enlazar el firmware con otra versión del
+núcleo.
+
+Los textos completos de las licencias MIT de cada librería están en sus
+repositorios, en las URL indicadas.
