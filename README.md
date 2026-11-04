@@ -1,4 +1,4 @@
-# Estacion Meteorologica ESP8266 v1.1.0
+# Estacion Meteorologica ESP8266 v1.2.0
 
 Rediseno completo del proyecto ThingPulse Weather Station para **PlatformIO** con portal web de configuracion, menu tactil de ajustes y gestion de horario de pantalla.
 
@@ -22,6 +22,7 @@ Rediseno completo del proyecto ThingPulse Weather Station para **PlatformIO** co
 | Reset fabrica | No tiene | **Desde web** |
 | DNS Captive Portal | No tiene | **Redirige automaticamente** |
 | Estilos de reloj | No tiene | **6 temas cambiables en caliente desde la web** |
+| Actualizaciones | Manual | **Automaticas y diarias desde GitHub Releases** |
 
 ## Hardware necesario
 
@@ -97,7 +98,35 @@ Una vez conectado a tu WiFi, el servidor web sigue activo en el puerto 80. Acced
 | `/status` | Estado del dispositivo (JSON) |
 | `/scan` | Escaneo de redes WiFi (JSON) |
 | `/reset` | Restaurar valores de fabrica |
-| `/update` | Actualizacion de firmware OTA |
+| `/update` | Actualizacion automatica desde GitHub y subida manual OTA |
+| `/update-info` | Estado de la actualizacion automatica (JSON) |
+
+## Actualizacion automatica desde GitHub
+
+Una vez al dia (por defecto entre las 04:00 y las 04:45) el dispositivo descarga `version.txt` de la **ultima Release** del repositorio. Si la version es mayor que la instalada, descarga `firmware.bin`, lo instala y se reinicia solo. En `/update` puedes activarla o desactivarla, cambiar el repositorio y la hora, y lanzar **Buscar ahora**.
+
+### Publicar una version nueva
+
+1. Sube la version en `include/version.h` (por ejemplo `1.3.0`).
+2. Haz commit y crea el tag: `git tag v1.3.0 && git push origin v1.3.0`
+   (o ejecuta el workflow **Release firmware** a mano desde la pestana *Actions*).
+3. El workflow `.github/workflows/release.yml` compila, y publica una Release con `firmware.bin` y `version.txt`. El tag tiene que coincidir con `version.h`; si no, el workflow falla a proposito.
+
+Los dispositivos solo comparan numeros de version, asi que **nunca publiques una Release sin subir la version**.
+
+### Firma del firmware (recomendado)
+
+La descarga va por HTTPS, pero el ESP8266 no valida el certificado de GitHub. Para que nadie pueda colar un firmware falso, firma las Releases:
+
+```bash
+openssl genrsa -out ota_private.key 2048
+openssl rsa -in ota_private.key -pubout -out ota_public.key
+```
+
+- Pega el contenido de `ota_public.key` en `include/ota_public_key.h`.
+- Crea el secreto `OTA_SIGNING_KEY` en GitHub (*Settings > Secrets and variables > Actions*) con el contenido de `ota_private.key`. **No subas nunca la clave privada al repositorio.**
+
+Con la clave publica compilada, el dispositivo rechaza cualquier actualizacion automatica que no este firmada con tu clave. La subida manual desde `/update` sigue aceptando binarios sin firmar. La primera version con clave debe instalarse por USB o con la subida manual.
 
 ## Estilos de reloj
 
@@ -173,6 +202,8 @@ weather-station/
 |   |-- web_portal.h        # Portal web (header)
 |   |-- clock_styles.h      # API de estilos de reloj
 |   |-- clock_page.h        # Pagina web /clock (en flash)
+|   |-- github_updater.h    # Actualizacion automatica desde GitHub
+|   |-- ota_public_key.h    # Clave publica para verificar la firma (opcional)
 |   |-- TouchControllerWS.h # Controlador tactil (actualizado a LittleFS)
 |   |-- TZinfo.h            # Base de datos de zonas horarias
 |   |-- ArialRounded.h      # Fuentes tipograficas
@@ -182,6 +213,11 @@ weather-station/
 |   |-- main.cpp            # Aplicacion principal
 |   |-- web_portal.cpp      # Implementacion del portal web
 |   |-- clock_styles.cpp    # Paletas y dibujo de los estilos de reloj
+|   |-- github_updater.cpp  # Comprobacion diaria e instalacion desde Releases
+|-- tools/
+|   `-- sign_firmware.py    # Firma firmware.bin (lo usa el workflow)
+|-- .github/workflows/
+|   `-- release.yml         # Compila y publica la Release al crear un tag vX.Y.Z
 |   `-- TouchControllerWS.cpp
 `-- data/                   # (vacio, config se crea en runtime)
 ```

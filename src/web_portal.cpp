@@ -1,6 +1,7 @@
 #include "web_portal.h"
 #include <Updater.h>
 #include "clock_page.h"
+#include "version.h"
 
 // Escapa texto para usarlo dentro de atributos value='...' del HTML
 static String htmlEscape(const char *in) {
@@ -71,6 +72,12 @@ void WebPortal::handleClient() {
 
 bool WebPortal::isAPMode() { return apMode; }
 bool WebPortal::shouldRestart() { return restartRequested; }
+bool WebPortal::consumeUpdateCheckRequest() {
+    bool r = updateCheckRequested;
+    updateCheckRequested = false;
+    return r;
+}
+
 bool WebPortal::consumeShowClockRequest() {
     bool r = showClockRequested;
     showClockRequested = false;
@@ -88,6 +95,9 @@ void WebPortal::setupRoutes() {
     server.on("/reset", HTTP_POST, [this]() { handleReset(); });
     server.on("/update", HTTP_GET, [this]() { handleUpdate(); });
     server.on("/clock", HTTP_GET, [this]() { handleClock(); });
+    server.on("/update-info", HTTP_GET, [this]() { handleUpdateInfo(); });
+    server.on("/update-check", HTTP_POST, [this]() { handleUpdateCheck(); });
+    server.on("/auto-update-save", HTTP_POST, [this]() { handleAutoUpdateSave(); });
     server.on("/clock-save", HTTP_POST, [this]() { handleClockSave(); });
     server.on("/update", HTTP_POST,
         [this]() {
@@ -464,6 +474,59 @@ void WebPortal::handleClockSave() {
     server.send(200, "application/json", json);
 }
 
+void WebPortal::handleUpdateInfo() {
+    AppConfig &c = configMgr->config;
+    String json = String(F("{\"installed\":\"")) + FIRMWARE_VERSION + "\"";
+    json += F(",\"auto\":");   json += c.autoUpdate ? "true" : "false";
+    json += F(",\"repo\":\"");  json += jsonEscape(c.updateRepo); json += "\"";
+    json += F(",\"hour\":");     json += String(c.updateHour);
+    json += F(",\"signed\":");   json += GithubUpdater::signingEnabled() ? "true" : "false";
+    if (updater) {
+        const GhUpdateStatus &st = updater->status();
+        json += F(",\"latest\":\"");      json += jsonEscape(st.latestVersion); json += "\"";
+        json += F(",\"result\":");         json += String((int)st.result);
+        json += F(",\"result_text\":\"");  json += GithubUpdater::resultText(st.result); json += "\"";
+        json += F(",\"message\":\"");     json += jsonEscape(st.message); json += "\"";
+        json += F(",\"last_check\":\"");
+        if (st.lastCheck) {
+            char buf[20];
+            strftime(buf, sizeof(buf), "%d/%m %H:%M", localtime(&st.lastCheck));
+            json += buf;
+        }
+        json += "\"";
+    }
+    json += "}";
+    server.send(200, "application/json", json);
+}
+
+void WebPortal::handleUpdateCheck() {
+    if (apMode || !updater) {
+        server.send(409, "application/json", F("{\"ok\":false,\"error\":\"Sin conexion a Internet\"}"));
+        return;
+    }
+    updateCheckRequested = true;   // se ejecuta en loop(), fuera del servidor web
+    server.send(200, "application/json", F("{\"ok\":true}"));
+}
+
+void WebPortal::handleAutoUpdateSave() {
+    AppConfig &c = configMgr->config;
+    if (server.hasArg("repo")) {
+        String repo = server.arg("repo");
+        repo.trim();
+        if (repo.startsWith("https://github.com/")) repo.remove(0, 19);   // admite la URL completa
+        if (repo.endsWith("/")) repo.remove(repo.length() - 1);
+        if (repo.length() == 0 || repo.length() >= sizeof(c.updateRepo) || repo.indexOf('/') < 1) {
+            server.send(400, "application/json", F("{\"ok\":false,\"error\":\"Usa el formato usuario/repositorio\"}"));
+            return;
+        }
+        strlcpy(c.updateRepo, repo.c_str(), sizeof(c.updateRepo));
+    }
+    if (server.hasArg("auto")) c.autoUpdate = server.arg("auto").toInt() != 0;
+    if (server.hasArg("hour")) c.updateHour = constrain(server.arg("hour").toInt(), 0, 23);
+    configMgr->save();
+    server.send(200, "application/json", F("{\"ok\":true}"));
+}
+
 void WebPortal::handleNotFound() {
     // Captive portal redirect
     if (apMode) {
@@ -633,9 +696,66 @@ String WebPortal::generateUpdateHTML() {
         "<a href='/schedule'>⏰ Horario</a>"
         "<a href='/status'>📊 Estado</a>"
         "<a href='/update'>🔄 OTA</a>"
+        "</div>");
+
+    // ── Actualización automática desde GitHub (rellena por JS con /update-info)
+    html += F("<style>"
+        ".gh-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:.92em;margin-bottom:12px}"
+        ".gh-grid span{color:#adb5bd}.gh-grid b{word-break:break-word}"
+        ".sw-row{display:flex;align-items:center;gap:10px;margin:10px 0}"
+        ".switch{position:relative;display:inline-block;width:48px;height:26px;flex:none}"
+        ".switch input{opacity:0;width:0;height:0}"
+        ".slider{position:absolute;cursor:pointer;inset:0;background:#333;border-radius:26px;transition:.3s}"
+        ".slider:before{position:absolute;content:'';height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}"
+        "input:checked+.slider{background:#4cc9f0}input:checked+.slider:before{transform:translateX(22px)}"
+        ".card label{display:block;color:#adb5bd;font-size:.9em;margin:10px 0 4px}"
+        ".card input[type=text],.card select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #333;"
+        "background:#16213e;color:#fff;font-size:1em}"
+        ".row2{display:flex;gap:10px}.row2>*{flex:1}"
+        ".btn2{background:#16213e;border:1px solid #4cc9f0;color:#4cc9f0}"
+        ".gh-msg{margin-top:12px;font-size:.92em;color:#adb5bd;min-height:1.2em}"
+        "</style>"
+        "<div class='card'><h2>☁️ Actualización automática (GitHub)</h2>"
+        "<div class='gh-grid'>"
+        "<span>Instalada</span><b id='gi'>…</b>"
+        "<span>Última en GitHub</span><b id='gl'>…</b>"
+        "<span>Último intento</span><b id='gr'>…</b>"
+        "<span>Verificación</span><b id='gs'>…</b>"
         "</div>"
-        "<div class='card'>"
-        "<h2>🔄 Actualizar Firmware</h2>"
+        "<div class='sw-row'><label class='switch'><input type='checkbox' id='ga'><span class='slider'></span></label>"
+        "<span>Buscar e instalar actualizaciones cada día</span></div>"
+        "<label for='grp'>Repositorio (usuario/nombre)</label>"
+        "<input type='text' id='grp' maxlength='63' placeholder='wencescarlos/TimeDesk'>"
+        "<label for='gh'>Hora de la comprobación diaria</label><select id='gh'></select>"
+        "<div class='row2'>"
+        "<button class='btn' onclick='ghSave()'>💾 Guardar</button>"
+        "<button class='btn btn2' id='gc' onclick='ghCheck()'>🔍 Buscar ahora</button>"
+        "</div><div class='gh-msg' id='gm'></div></div>"
+        "<script>"
+        "function $(i){return document.getElementById(i)}"
+        "for(var h=0;h<24;h++){var o=document.createElement('option');o.value=h;o.textContent=(h<10?'0':'')+h+':00 - '+(h<10?'0':'')+h+':59';$('gh').appendChild(o)}"
+        "function ghFill(d){$('gi').textContent='v'+d.installed;$('gl').textContent=d.latest?'v'+d.latest:'—';"
+        "$('gr').textContent=d.last_check?(d.result_text+' · '+d.last_check+(d.message?' · '+d.message:'')):'Nunca';"
+        "$('gs').innerHTML=d.signed?'&#9989; Firma RSA obligatoria':'&#9888;&#65039; Sin firma (ver README)';return d}"
+        "function ghLoad(first){return fetch('/update-info').then(function(r){return r.json()}).then(function(d){ghFill(d);"
+        "if(first){$('ga').checked=d.auto;$('grp').value=d.repo;$('gh').value=d.hour}return d})}"
+        "function ghPost(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b})"
+        ".then(function(r){return r.json()})}"
+        "function ghSave(){ghPost('/auto-update-save','auto='+($('ga').checked?1:0)+'&repo='+encodeURIComponent($('grp').value.trim())+'&hour='+$('gh').value)"
+        ".then(function(d){$('gm').textContent=d.ok?'Guardado ✔':'Error: '+d.error;ghLoad()}).catch(function(){$('gm').textContent='Error al guardar'})}"
+        "function ghCheck(){var t0=Date.now(),prev=null;$('gc').disabled=true;"
+        "$('gm').textContent='Comprobando… si hay una versión nueva se instalará y el dispositivo se reiniciará (1-2 min).';"
+        "ghLoad().then(function(d){prev=d.last_check}).catch(function(){}).then(function(){return ghPost('/update-check','')})"
+        ".then(function(){var iv=setInterval(function(){ghLoad().then(function(d){"
+        "if(d.last_check&&d.last_check!==prev){clearInterval(iv);$('gc').disabled=false;"
+        "$('gm').textContent='Resultado: '+d.result_text+(d.message?' — '+d.message:'')}"
+        "}).catch(function(){$('gm').textContent='Trabajando… el dispositivo no responde mientras comprueba o instala.';"
+        "if(Date.now()-t0>150000){clearInterval(iv);location.reload()}})},4000)})}"
+        "ghLoad(true).catch(function(){$('gm').textContent='No se pudo leer el estado'});"
+        "</script>");
+
+    html += F("<div class='card'>"
+        "<h2>🔄 Actualizar Firmware (manual)</h2>"
         "<div class='warn'>⚠️ <strong>No interrumpas la actualización.</strong> "
         "El dispositivo se reiniciará automáticamente al terminar.</div>"
         "<div class='info'>ℹ️ Sube el archivo <strong>firmware.bin</strong> generado por PlatformIO.<br>"

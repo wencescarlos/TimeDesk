@@ -38,6 +38,9 @@ public:
         config.updateIntervalMin = 10;
         config.clockStyle = 0;
         config.startOnClock = false;
+        config.autoUpdate = true;
+        strlcpy(config.updateRepo, DEFAULT_UPDATE_REPO, sizeof(config.updateRepo));
+        config.updateHour = DEFAULT_UPDATE_HOUR;
     }
     
     // Corrige valores fuera de rango (p.ej. un intervalo 0 provocaria
@@ -50,6 +53,7 @@ public:
         config.screenOnMinute %= 60;
         config.screenOffMinute %= 60;
         if (config.clockStyle >= CLOCK_STYLE_MAX) config.clockStyle = 0;
+        config.updateHour %= 24;
     }
     
     bool begin() {
@@ -72,7 +76,7 @@ public:
             return false;
         }
         
-        StaticJsonDocument<1024> doc;
+        StaticJsonDocument<1536> doc;
         DeserializationError err = deserializeJson(doc, f);
         f.close();
         
@@ -109,6 +113,9 @@ public:
         config.updateIntervalMin = doc["update_min"] | 10;
         config.clockStyle = doc["clock_style"] | 0;
         config.startOnClock = doc["start_clock"] | false;
+        config.autoUpdate = doc["auto_update"] | true;
+        strlcpy(config.updateRepo, doc["update_repo"] | DEFAULT_UPDATE_REPO, sizeof(config.updateRepo));
+        config.updateHour = doc["update_hour"] | DEFAULT_UPDATE_HOUR;
         sanitize();
         
         Serial.println(F("[Config] Configuration loaded successfully"));
@@ -118,7 +125,7 @@ public:
     
     bool save() {
         sanitize();
-        StaticJsonDocument<1024> doc;
+        StaticJsonDocument<1536> doc;
         
         doc["wifi_ssid"] = config.wifiSSID;
         doc["wifi_pass"] = config.wifiPassword;
@@ -139,6 +146,9 @@ public:
         doc["update_min"] = config.updateIntervalMin;
         doc["clock_style"] = config.clockStyle;
         doc["start_clock"] = config.startOnClock;
+        doc["auto_update"] = config.autoUpdate;
+        doc["update_repo"] = config.updateRepo;
+        doc["update_hour"] = config.updateHour;
         
         File f = LittleFS.open(CONFIG_FILE, "w");
         if (!f) {

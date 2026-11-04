@@ -3,3 +3,7 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+
+# Claves de firma OTA: la privada nunca se sube
+ota_private.key
+*.key

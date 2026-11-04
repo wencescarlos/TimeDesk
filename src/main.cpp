@@ -40,6 +40,7 @@
 #include "moonphases.h"
 #include "weathericons.h"
 #include "clock_styles.h"
+#include "github_updater.h"
 
 
 // =====================================================
@@ -58,6 +59,7 @@ TouchControllerWS touchController(&ts);
 
 ConfigManager configManager;
 WebPortal webPortal(&configManager);
+GithubUpdater githubUpdater;
 
 OpenWeatherMapCurrentData currentWeather;
 OpenWeatherMapForecastData forecasts[MAX_FORECASTS];
@@ -119,6 +121,7 @@ void drawAbout();
 void drawSettingsScreen();
 void drawClockScreen();
 void setBacklight(bool on);
+void runGithubUpdate(bool manual);
 void handleSettingsTouch(TS_Point p);
 void drawSeparator(uint16_t y);
 String getTime(time_t *timestamp);
@@ -324,6 +327,7 @@ void setup() {
     }
     
     // WiFi conectado -> iniciar servidor web en modo STA
+    webPortal.setUpdater(&githubUpdater);
     webPortal.beginSTA();
     
     carousel.setFrames(frames, frameCount);
@@ -362,6 +366,12 @@ void loop() {
     if (webPortal.consumeShowClockRequest()) {
         screen = SCR_CLOCK;
         timerPress = millis();   // despierta la pantalla si estaba en reposo
+    }
+    
+    // Actualización desde GitHub: diaria a la hora configurada, o a petición
+    bool manualCheck = webPortal.consumeUpdateCheckRequest();
+    if (manualCheck || githubUpdater.isDue(configManager.config)) {
+        runGithubUpdate(manualCheck);
     }
     
     gfx.fillBuffer(MINI_BLACK);
@@ -538,6 +548,34 @@ void handleSettingsTouch(TS_Point p) {
 // =====================================================
 // PANTALLA DE RELOJ COMPLETA
 // =====================================================
+void runGithubUpdate(bool manual) {
+    // Mensaje fijo: el panel ILI9341 conserva la imagen aunque se libere el buffer
+    gfx.fillBuffer(MINI_BLACK);
+    gfx.setFont(ArialRoundedMTBold_14);
+    gfx.setTextAlignment(TEXT_ALIGN_CENTER);
+    gfx.setColor(MINI_YELLOW);
+    gfx.drawString(120, 120, F("Buscando actualizaciones"));
+    gfx.drawString(120, 140, F("en GitHub..."));
+    gfx.setColor(MINI_WHITE);
+    gfx.drawString(120, 180, F("Si hay una nueva version"));
+    gfx.drawString(120, 200, F("se instalara y reiniciara."));
+    gfx.drawString(120, 230, F("No lo desconectes."));
+    gfx.commit();
+    
+    // HTTPS necesita ~25KB de RAM: se libera el framebuffer (19KB) mientras dura
+    gfx.freeBuffer();
+    GhUpdateResult r = githubUpdater.run(configManager.config);
+    gfx.init();   // si se instaló la nueva versión, el ESP ya se habrá reiniciado
+    
+    if (manual || (r != GH_UP_TO_DATE && r != GH_NO_RELEASE)) {
+        String msg = String(GithubUpdater::resultText(r));
+        if (githubUpdater.status().latestVersion.length()) msg += " (v" + githubUpdater.status().latestVersion + ")";
+        drawProgress(100, msg);
+        delay(2500);
+    }
+    timerPress = millis();
+}
+
 void drawClockScreen() {
     time_t now = time(nullptr);
     struct tm *timeinfo = localtime(&now);

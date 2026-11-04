@@ -10,6 +10,7 @@
 #include <DNSServer.h>
 #include "config.h"
 #include "config_manager.h"
+#include "github_updater.h"
 
 class WebPortal {
 public:
@@ -22,6 +23,8 @@ public:
     bool isAPMode();
     bool shouldRestart();
     bool consumeShowClockRequest();   // true una vez si la web pidio mostrar el reloj
+    bool consumeUpdateCheckRequest(); // true una vez si la web pidio buscar actualizaciones
+    void setUpdater(GithubUpdater *u) { updater = u; }
     String getLocalIP();
     
 private:
@@ -31,6 +34,8 @@ private:
     bool apMode;
     bool restartRequested;
     bool showClockRequested;
+    bool updateCheckRequested = false;
+    GithubUpdater *updater = nullptr;
     
     void setupRoutes();
     void handleRoot();
@@ -45,6 +50,9 @@ private:
     void handleNotFound();
     void handleClock();
     void handleClockSave();
+    void handleAutoUpdateSave();
+    void handleUpdateCheck();
+    void handleUpdateInfo();
 
     String generateScheduleHTML();
     String generateUpdateHTML();
