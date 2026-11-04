@@ -30,10 +30,19 @@ static const uint16_t PALETTES[CLOCK_STYLE_COUNT][4] = {
     /* Arcade    */ {0x0000, 0xFFFF, 0xFFE0, 0xF8A0},   // negro, blanco, amarillo, rojo
     /* Portatil  */ {0x9DE1, 0x09C1, 0x3306, 0x6463},   // 4 tonos de verde LCD
     /* Futurista */ {0x0000, 0x07FF, 0xF81F, 0x0459},   // negro, cian, magenta, azul acero
+    /* Analogico */ {0x0866, 0xFFFF, 0xFB00, 0x8C71},   // azul noche, blanco, naranja, gris
+    /* 1-bit     */ {0xFFFF, 0x0000, 0x8410, 0xC618},   // blanco, negro, grises
+    /* Escrit.3D */ {0x0410, 0xFFFF, 0x0010, 0xC618},   // verde azulado, blanco, azul marino, plata
+    /* Terminal  */ {0x0000, 0x07E0, 0xAFF5, 0x0320},   // fosforo verde
+    /* Micro 8bit*/ {0x18B4, 0x8CBF, 0xFFFF, 0xFFE0},   // azul, azul claro, blanco, amarillo
+    /* Aventura  */ {0x0180, 0xFFB9, 0xFDA0, 0xA145},   // bosque, pergamino, oro, rojo
+    /* Velocidad */ {0x0008, 0xFFFF, 0xFFE0, 0xF81F},   // noche, blanco, amarillo, magenta
+    /* Plataform.*/ {0x5D1F, 0xFFFF, 0xD340, 0x2444},   // cielo, blanco, ladrillo, verde
 };
 
 static const char *STYLE_NAMES[CLOCK_STYLE_COUNT] = {
-    "Clasico", "Retro", "Anime", "Arcade", "Portatil", "Futurista"
+    "Clasico", "Retro", "Anime", "Arcade", "Portatil", "Futurista",
+    "Analogico", "1-bit", "Escritorio", "Terminal", "Micro 8bit", "Aventura", "Velocidad", "Plataformas"
 };
 
 const char *clockStyleName(uint8_t style) {
@@ -212,6 +221,10 @@ static const PixelGlyph PIXEL_FONT[] PROGMEM = {
     {'Y',3,{5,5,2,2,2}}, {'Z',3,{7,1,2,4,7}},
     {':',1,{0,1,0,1,0}}, {'.',1,{0,0,0,0,1}}, {'!',1,{1,1,1,0,1}}, {'-',3,{0,0,7,0,0}},
     {'%',3,{5,1,2,4,5}}, {'/',3,{1,1,2,4,4}}, {'+',3,{0,2,7,2,0}}, {'\x01',3,{6,6,0,0,0}}, // \x01 = grado
+    {'$',3,{3,6,2,3,6}}, {'@',3,{2,5,7,4,3}}, {'~',3,{0,3,6,0,0}}, {'#',3,{5,7,5,7,5}},
+    {'[',2,{3,2,2,2,3}}, {']',2,{3,1,1,1,3}}, {'(',2,{1,2,2,2,1}}, {')',2,{2,1,1,1,2}},
+    {'_',3,{0,0,0,0,7}}, {'=',3,{0,7,0,7,0}}, {'>',3,{4,2,1,2,4}}, {'<',3,{1,2,4,2,1}},
+    {',',2,{0,0,0,1,2}}, {'?',3,{7,1,2,0,2}}, {'*',3,{0,5,2,5,0}}, {'\'',1,{1,1,0,0,0}},
     {' ',3,{0,0,0,0,0}},
 };
 static const uint8_t PIXEL_FONT_LEN = sizeof(PIXEL_FONT) / sizeof(PIXEL_FONT[0]);
@@ -266,7 +279,8 @@ static int16_t pixelTextWidth(const String &s, uint8_t scale) {
 
 // Dibuja texto pixel. align: 0 izq, 1 centro, 2 der. shadow: color de sombra (C_NONE = sin sombra)
 static void drawPixelText(MiniGrafx &g, const String &raw, int16_t x, int16_t y, uint8_t scale,
-                          uint8_t color, uint8_t align = 0, uint8_t shadow = C_NONE, uint16_t maxW = 240) {
+                          uint8_t color, uint8_t align = 0, uint8_t shadow = C_NONE, uint16_t maxW = 240,
+                          int8_t slant = 0) {   // slant > 0: cursiva (desplaza las filas superiores)
     String s = pixelNormalize(raw);
     while (s.length() > 1 && pixelTextWidth(s, scale) > maxW) s.remove(s.length() - 1);
     int16_t w = pixelTextWidth(s, scale);
@@ -285,7 +299,7 @@ static void drawPixelText(MiniGrafx &g, const String &raw, int16_t x, int16_t y,
             for (uint8_t r = 0; r < 5; r++) {
                 for (uint8_t c = 0; c < gl.w; c++) {
                     if (gl.rows[r] & (1 << (gl.w - 1 - c))) {
-                        g.fillRect(cx + c * scale + off, y + r * scale + off, block, block);
+                        g.fillRect(cx + c * scale + off + (4 - r) * slant, y + r * scale + off, block, block);
                     }
                 }
             }
@@ -710,6 +724,640 @@ static void fullFuture(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, c
 }
 
 // =====================================================
+// UTILIDADES DE LOS ESTILOS "INFORMATICA Y VIDEOJUEGOS"
+// =====================================================
+
+// Biselado 3D: luz arriba/izquierda y sombra abajo/derecha (o al reves si hundido)
+static void drawBevel(MiniGrafx &g, int16_t x, int16_t y, int16_t w, int16_t h,
+                      uint8_t light, uint8_t dark, bool sunken = false, uint8_t depth = 2) {
+    for (uint8_t i = 0; i < depth; i++) {
+        g.setColor(sunken ? dark : light);
+        g.drawHorizontalLine(x + i, y + i, w - 2 * i);
+        g.drawVerticalLine(x + i, y + i, h - 2 * i);
+        g.setColor(sunken ? light : dark);
+        g.drawHorizontalLine(x + i, y + h - 1 - i, w - 2 * i);
+        g.drawVerticalLine(x + w - 1 - i, y + i, h - 2 * i);
+    }
+}
+
+// Trama de puntos al 50% (gris simulado en pantallas de 1 bit)
+static void fillDither(MiniGrafx &g, int16_t x, int16_t y, int16_t w, int16_t h, uint8_t color) {
+    g.setColor(color);
+    for (int16_t yy = y; yy < y + h; yy++)
+        for (int16_t xx = x + ((x + yy) & 1); xx < x + w; xx += 2) g.setPixel(xx, yy);
+}
+
+// Aguja de reloj: rombo alargado de la punta a la cola
+static void drawHand(MiniGrafx &g, int16_t cx, int16_t cy, float angleDeg, int16_t len,
+                     int16_t halfWidth, int16_t tail, uint8_t color) {
+    float a = angleDeg * DEG_TO_RAD;
+    float sx = sinf(a), cy_ = -cosf(a);              // direccion de la aguja
+    int16_t tx = cx + sx * len, ty = cy + cy_ * len;  // punta
+    int16_t bx = cx - sx * tail, by = cy - cy_ * tail;// cola
+    int16_t lx = cx - cy_ * halfWidth, ly = cy + sx * halfWidth;
+    int16_t rx = cx + cy_ * halfWidth, ry = cy - sx * halfWidth;
+    g.setColor(color);
+    g.fillTriangle(tx, ty, lx, ly, rx, ry);
+    g.fillTriangle(bx, by, lx, ly, rx, ry);
+}
+
+// Texto hecho de bloques con brillo (estilo plataformas)
+static void drawBlockText(MiniGrafx &g, const String &raw, int16_t cx, int16_t y, uint8_t scale,
+                          uint8_t fill, uint8_t light, uint8_t dark) {
+    String s = pixelNormalize(raw);
+    int16_t x = cx - pixelTextWidth(s, scale) / 2;
+    PixelGlyph gl;
+    for (uint16_t i = 0; i < s.length(); i++) {
+        findGlyph(s[i], gl);
+        for (uint8_t r = 0; r < 5; r++)
+            for (uint8_t c = 0; c < gl.w; c++)
+                if (gl.rows[r] & (1 << (gl.w - 1 - c))) {
+                    int16_t bx = x + c * scale, by = y + r * scale;
+                    g.setColor(dark);  g.fillRect(bx, by, scale, scale);
+                    g.setColor(fill);  g.fillRect(bx, by, scale - 1, scale - 1);
+                    g.setColor(light);
+                    g.drawHorizontalLine(bx + 1, by + 1, scale - 3);
+                    g.drawVerticalLine(bx + 1, by + 1, scale - 3);
+                }
+        x += (gl.w + 1) * scale;
+    }
+}
+
+static String uptimeText(uint32_t secs) {
+    char buf[24];
+    uint32_t d = secs / 86400, h = (secs / 3600) % 24, m = (secs / 60) % 60;
+    sprintf(buf, "UP %luD %02lu:%02lu", (unsigned long)d, (unsigned long)h, (unsigned long)m);
+    return String(buf);
+}
+
+static const uint8_t SPRITE_HEART_EMPTY[8] = {0x00, 0x66, 0x99, 0x81, 0x42, 0x24, 0x18, 0x00};
+static const uint8_t SPRITE_CHEST_SHUT[8]  = {0x00, 0x7E, 0x81, 0xFF, 0x99, 0x81, 0xFF, 0x00};
+static const uint8_t SPRITE_CHEST_OPEN[8]  = {0x7E, 0x81, 0x7E, 0x00, 0xFF, 0x99, 0x81, 0xFF};
+
+// =====================================================
+// ESTILO ANALOGICO
+// =====================================================
+static void drawDial(MiniGrafx &g, int16_t cx, int16_t cy, int16_t r, const struct tm *t, bool detailed) {
+    g.setColor(C_FG);
+    g.drawCircle(cx, cy, r);
+    if (detailed) g.drawCircle(cx, cy, r - 1);
+    for (uint8_t i = 0; i < 60; i++) {
+        if (!detailed && i % 5) continue;
+        float a = i * 6 * DEG_TO_RAD;
+        float sx = sinf(a), sy = -cosf(a);
+        int16_t len = (i % 5 == 0) ? r / 8 : r / 20;
+        g.setColor(i % 5 == 0 ? C_FG : C_SEC);
+        g.drawLine(cx + sx * (r - 3 - len), cy + sy * (r - 3 - len), cx + sx * (r - 3), cy + sy * (r - 3));
+        if (detailed && i % 15 == 0)   // marcas horarias principales, mas gruesas
+            g.drawLine(cx + sx * (r - 3 - len) + 1, cy + sy * (r - 3 - len), cx + sx * (r - 3) + 1, cy + sy * (r - 3));
+    }
+    float hourA = ((t->tm_hour % 12) + t->tm_min / 60.0f) * 30;
+    float minA = (t->tm_min + t->tm_sec / 60.0f) * 6;
+    drawHand(g, cx, cy, hourA, r * 50 / 100, detailed ? 5 : 2, detailed ? 10 : 2, C_FG);
+    drawHand(g, cx, cy, minA, r * 75 / 100, detailed ? 4 : 2, detailed ? 12 : 3, C_FG);
+    float sa = t->tm_sec * 6 * DEG_TO_RAD;
+    g.setColor(C_ACC);
+    g.drawLine(cx - sinf(sa) * r / 6, cy + cosf(sa) * r / 6, cx + sinf(sa) * r * 88 / 100, cy - cosf(sa) * r * 88 / 100);
+    g.fillCircle(cx, cy, detailed ? 5 : 2);
+    if (detailed) { g.setColor(C_BG); g.fillCircle(cx, cy, 2); }
+}
+
+static void headerAnalog(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    drawDial(g, 28, 28, 25, t, false);
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_SEC);
+    g.drawString(62, 1, shortDate(t) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
+    g.setFont(fontRounded36);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_FG);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    g.drawString(146, 12, buf);
+}
+
+static void fullAnalog(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    const int16_t cx = 120, cy = 146, r = 106;
+    g.setFont(fontRounded14);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_SEC);
+    g.drawString(cx, 6, shortDate(t) + " " + String(1900 + t->tm_year));
+
+    // Numeros de las horas
+    g.setFont(ArialMT_Plain_16);
+    g.setColor(C_FG);
+    for (uint8_t h = 1; h <= 12; h++) {
+        float a = h * 30 * DEG_TO_RAD;
+        g.drawString(cx + sinf(a) * (r - 28), cy - cosf(a) * (r - 28) - 9, String(h));
+    }
+    // Ventanilla con el dia del mes
+    g.setColor(C_SEC);
+    g.drawRect(cx + 38, cy - 9, 24, 18);
+    g.setFont(ArialMT_Plain_10);
+    g.setColor(C_ACC);
+    g.drawString(cx + 50, cy - 7, String(t->tm_mday));
+    g.setColor(C_SEC);
+    g.drawString(cx, cy + 34, "TIMEDESK");
+
+    drawDial(g, cx, cy, r, t, true);
+
+    g.setFont(fontRounded14);
+    g.setColor(C_FG);
+    buildTimeString(buf, t, cfg, true);
+    g.drawString(cx, 262, String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? " PM" : " AM") : ""));
+    g.setColor(C_SEC);
+    g.drawString(cx, 286, ex.temperature + "  " + ex.description);
+}
+
+// =====================================================
+// ESTILO ESCRITORIO 1-BIT (ordenadores de los 80)
+// =====================================================
+// Ventana monocroma con barra de titulo rayada, cuadro de cierre y sombra
+static void drawMonoWindow(MiniGrafx &g, int16_t x, int16_t y, int16_t w, int16_t h, const String &title) {
+    g.setColor(C_FG);  g.fillRect(x + 2, y + 2, w, h);   // sombra
+    g.setColor(C_BG);  g.fillRect(x, y, w, h);
+    g.setColor(C_FG);  g.drawRect(x, y, w, h);
+    for (int16_t yy = y + 4; yy <= y + 15; yy += 2) g.drawHorizontalLine(x + 2, yy, w - 4);
+    g.drawHorizontalLine(x, y + 19, w);
+    // Cuadro de cierre
+    g.setColor(C_BG);  g.fillRect(x + 7, y + 4, 13, 12);
+    g.setColor(C_FG);  g.drawRect(x + 8, y + 5, 11, 10);
+    // Titulo sobre fondo liso
+    g.setFont(ArialMT_Plain_10);
+    uint16_t tw = g.getStringWidth(title.c_str(), title.length()) + 12;
+    g.setColor(C_BG);  g.fillRect(x + w / 2 - tw / 2, y + 2, tw, 16);
+    g.setColor(C_FG);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.drawString(x + w / 2, y + 4, title);
+}
+
+static void headerMono(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    g.setColor(C_FG);
+    for (int16_t yy = 2; yy <= 12; yy += 2) g.drawHorizontalLine(0, yy, 190);
+    g.setFont(ArialMT_Plain_10);
+    String title = "TimeDesk - " + shortDate(t);
+    uint16_t tw = g.getStringWidth(title.c_str(), title.length()) + 12;
+    g.setColor(C_BG); g.fillRect(95 - tw / 2, 0, tw, 15);
+    g.setColor(C_FG); g.setTextAlignment(TEXT_ALIGN_CENTER); g.drawString(95, 1, title);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    drawPixelText(g, buf, 120, 20, 6, C_FG, 1);
+    if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 236, 42, 2, C_FG, 2);
+}
+
+static void fullMono(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    fillDither(g, 0, 20, 240, 300, C_FG);   // escritorio gris tramado
+
+    // Barra de menus
+    g.setColor(C_FG);
+    g.drawHorizontalLine(0, 19, 240);
+    g.drawCircle(12, 9, 5);                  // icono de reloj
+    g.drawLine(12, 9, 12, 6); g.drawLine(12, 9, 14, 10);
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.drawString(24, 3, "Archivo  Edicion  Ver  Hora");
+    sprintf(buf, "%02d:%02d", (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
+    g.setTextAlignment(TEXT_ALIGN_RIGHT);
+    g.drawString(235, 3, buf);
+
+    // Ventana del reloj
+    drawMonoWindow(g, 12, 32, 214, 168, "Reloj");
+    buildTimeString(buf, t, cfg, false);
+    drawPixelText(g, buf, 119, 66, 10, C_FG, 1);
+    if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 216, 122, 2, C_FG, 2);
+    // Barra de segundos rellenada con trama, como un indicador de progreso
+    g.setColor(C_FG);
+    g.drawRect(32, 132, 174, 14);
+    fillDither(g, 34, 134, 170 * t->tm_sec / 59, 10, C_FG);
+    g.setFont(ArialMT_Plain_16);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_FG);
+    g.drawString(119, 156, shortDate(t) + " " + String(1900 + t->tm_year));
+
+    // Ventana del tiempo
+    drawMonoWindow(g, 34, 218, 184, 84, "Tiempo");
+    g.setColor(C_FG);
+    g.setFont(ArialMT_Plain_16);
+    g.drawString(126, 242, ex.temperature + "  " + ex.location);
+    g.setFont(ArialMT_Plain_10);
+    g.drawStringMaxWidth(126, 264, 170, ex.description);
+}
+
+// =====================================================
+// ESTILO ESCRITORIO 3D (sistemas de los 90)
+// =====================================================
+static void drawTitleBar(MiniGrafx &g, int16_t x, int16_t y, int16_t w, const String &title) {
+    g.setColor(C_ACC);
+    g.fillRect(x, y, w, 18);
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_FG);
+    g.drawString(x + 5, y + 3, title);
+    // Botones minimizar / maximizar / cerrar
+    for (uint8_t i = 0; i < 3; i++) {
+        int16_t bx = x + w - 52 + i * 17;
+        g.setColor(C_SEC); g.fillRect(bx, y + 2, 15, 14);
+        drawBevel(g, bx, y + 2, 15, 14, C_FG, C_ACC, false, 1);
+        g.setColor(C_ACC);
+        if (i == 0) g.fillRect(bx + 4, y + 11, 6, 2);
+        if (i == 1) { g.drawRect(bx + 4, y + 5, 7, 7); g.drawHorizontalLine(bx + 4, y + 6, 7); }
+        if (i == 2) { g.drawLine(bx + 4, y + 5, bx + 10, y + 11); g.drawLine(bx + 10, y + 5, bx + 4, y + 11);
+                      g.drawLine(bx + 5, y + 5, bx + 11, y + 11); g.drawLine(bx + 11, y + 5, bx + 5, y + 11); }
+    }
+}
+
+static void headerDesktop(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    g.setColor(C_SEC);
+    g.fillRect(0, 0, 240, 56);
+    drawBevel(g, 0, 0, 240, 56, C_FG, C_ACC);
+    g.setColor(C_ACC);
+    g.fillRect(3, 3, 190, 13);
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_FG);
+    g.drawString(7, 3, "Reloj - " + shortDate(t));
+    g.setFont(fontRounded36);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_ACC);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    g.drawString(120, 13, buf);
+}
+
+static void fullDesktop(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    // Ventana principal
+    const int16_t wx = 8, wy = 14, ww = 224, wh = 196;
+    g.setColor(C_SEC);
+    g.fillRect(wx, wy, ww, wh);
+    drawBevel(g, wx, wy, ww, wh, C_FG, C_ACC);
+    drawTitleBar(g, wx + 3, wy + 3, ww - 6, "Reloj - TimeDesk");
+
+    // Panel hundido con la hora
+    g.setColor(C_FG);
+    g.fillRect(wx + 12, wy + 30, ww - 24, 66);
+    drawBevel(g, wx + 12, wy + 30, ww - 24, 66, C_FG, C_ACC, true);
+    g.setFont(fontRounded36);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_ACC);
+    buildTimeString(buf, t, cfg, true);
+    g.drawString(120, wy + 41, buf);
+
+    g.setFont(ArialMT_Plain_16);
+    g.drawString(120, wy + 104, shortDate(t) + " " + String(1900 + t->tm_year) +
+                 (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
+
+    // Barra de progreso de bloques (segundos)
+    g.setColor(C_FG);
+    g.fillRect(wx + 12, wy + 132, ww - 24, 18);
+    drawBevel(g, wx + 12, wy + 132, ww - 24, 18, C_FG, C_ACC, true, 1);
+    uint8_t blocks = (t->tm_sec + 1) * 20 / 60;
+    g.setColor(C_ACC);
+    for (uint8_t i = 0; i < blocks; i++) g.fillRect(wx + 16 + i * 10, wy + 136, 8, 10);
+
+    // Botones Aceptar / Cancelar
+    const char *labels[] = {"Aceptar", "Cancelar"};
+    g.setFont(ArialMT_Plain_10);
+    for (uint8_t i = 0; i < 2; i++) {
+        int16_t bx = wx + 46 + i * 70;
+        drawBevel(g, bx, wy + 160, 62, 22, C_FG, C_ACC);
+        g.setColor(C_ACC);
+        g.drawString(bx + 31, wy + 165, labels[i]);
+    }
+
+    // Icono del tiempo en el escritorio
+    g.setColor(C_FG);
+    g.fillCircle(30, 232, 9); g.fillCircle(42, 228, 12); g.fillCircle(54, 234, 8); g.fillRect(26, 234, 32, 8);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.drawString(14, 246, ex.temperature + "  " + ex.location);
+    g.drawStringMaxWidth(14, 260, 210, ex.description);
+
+    // Barra de tareas con boton de menu y bandeja con la hora
+    g.setColor(C_SEC);
+    g.fillRect(0, 294, 240, 26);
+    g.setColor(C_FG);
+    g.drawHorizontalLine(0, 295, 240);
+    drawBevel(g, 3, 298, 62, 20, C_FG, C_ACC);
+    g.setColor(C_ACC);
+    g.drawCircle(14, 308, 5); g.drawLine(14, 308, 14, 305); g.drawLine(14, 308, 16, 309);
+    g.drawString(24, 302, "Menu");
+    g.drawString(25, 302, "Menu");   // negrita simulada
+    drawBevel(g, 176, 298, 61, 20, C_FG, C_ACC, true, 1);
+    sprintf(buf, "%02d:%02d", (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.drawString(206, 302, buf);
+}
+
+// =====================================================
+// ESTILO TERMINAL (fosforo verde)
+// =====================================================
+static int16_t termPrompt(MiniGrafx &g, int16_t y, const String &cmd) {
+    static const char PROMPT[] = "TIMEDESK:~$ ";
+    drawPixelText(g, PROMPT, 6, y, 2, C_ACC);
+    int16_t x = 6 + pixelTextWidth(PROMPT, 2) + 2;
+    drawPixelText(g, cmd, x, y, 2, C_FG);
+    return x + pixelTextWidth(cmd, 2) + (cmd.length() ? 6 : 0);
+}
+
+static void fullTerminal(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[40];
+    // Lineas de barrido del CRT
+    g.setColor(C_SEC);
+    for (int16_t y = 2; y < 320; y += 4) g.drawHorizontalLine(0, y, 240);
+
+    termPrompt(g, 6, "date");
+    strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S %Z", t);
+    drawPixelText(g, WDAY_NAMES[t->tm_wday] + " " + String(buf), 6, 20, 2, C_FG, 0, C_NONE, 228);
+
+    termPrompt(g, 40, "clock --big");
+    buildTimeString(buf, t, cfg, false);
+    drawPixelText(g, buf, 120, 58, 10, C_FG, 1);
+    if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 234, 98, 2, C_ACC, 2);
+    String bar = "[";
+    for (uint8_t i = 0; i < 20; i++) bar += (i * 3 <= t->tm_sec) ? '#' : '.';
+    sprintf(buf, "] %02dS", t->tm_sec);
+    drawPixelText(g, bar + buf, 6, 116, 2, C_FG);
+
+    termPrompt(g, 140, "uptime");
+    drawPixelText(g, uptimeText(ex.uptimeSec) + "  MEM " + String(ex.freeHeap) + "B", 6, 154, 2, C_FG, 0, C_NONE, 228);
+
+    termPrompt(g, 174, "weather");
+    drawPixelText(g, ex.temperature + " " + ex.location, 6, 188, 2, C_FG, 0, C_NONE, 228);
+    drawPixelText(g, ex.description, 6, 202, 2, C_FG, 0, C_NONE, 228);
+
+    termPrompt(g, 222, "uname -a");
+    drawPixelText(g, "TIMEDESK ESP8266 XTENSA", 6, 236, 2, C_FG, 0, C_NONE, 228);
+
+    int16_t cx = termPrompt(g, 256, "");
+    if (t->tm_sec % 2 == 0) { g.setColor(C_FG); g.fillRect(cx, 255, 8, 12); }
+}
+
+static void headerTerminal(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    drawPixelText(g, "~$ DATE  " + shortDate(t), 4, 3, 2, C_ACC);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    drawPixelText(g, buf, 8, 18, 6, C_FG);
+    int16_t x = 8 + pixelTextWidth(pixelNormalize(buf), 6) + 6;
+    if (t->tm_sec % 2 == 0) { g.setColor(C_FG); g.fillRect(x, 42, 12, 6); }
+}
+
+// =====================================================
+// ESTILO MICROORDENADOR 8-BIT (BASIC)
+// =====================================================
+static void fullMicro(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    // Marco de color alrededor de la pantalla de texto
+    g.setColor(C_FG);
+    g.fillRect(0, 0, 240, 20);
+    g.fillRect(0, 300, 240, 20);
+    g.fillRect(0, 20, 12, 280);
+    g.fillRect(228, 20, 12, 280);
+
+    drawPixelText(g, "** TIMEDESK BASIC **", 120, 28, 2, C_FG, 1);
+    drawPixelText(g, "RAM LIBRE " + String(ex.freeHeap) + " BYTES", 120, 42, 2, C_FG, 1);
+    drawPixelText(g, "LISTO.", 16, 62, 2, C_FG);
+    drawPixelText(g, "PRINT HORA$", 16, 76, 2, C_FG);
+    buildTimeString(buf, t, cfg, false);
+    drawPixelText(g, buf, 120, 94, 9, C_ACC, 1);
+    sprintf(buf, "SEG %02d", t->tm_sec);
+    drawPixelText(g, String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""), 16, 146, 2, C_SEC);
+    drawPixelText(g, "LISTO.", 16, 166, 2, C_FG);
+    drawPixelText(g, "PRINT TIEMPO$", 16, 180, 2, C_FG);
+    drawPixelText(g, ex.temperature + " " + ex.location, 16, 196, 2, C_ACC, 0, C_NONE, 208);
+    drawPixelText(g, ex.description, 16, 210, 2, C_ACC, 0, C_NONE, 208);
+    drawPixelText(g, shortDate(t) + " " + String(1900 + t->tm_year), 16, 224, 2, C_ACC);
+    drawPixelText(g, "LISTO.", 16, 246, 2, C_FG);
+    if (t->tm_sec % 2 == 0) { g.setColor(C_FG); g.fillRect(16, 260, 8, 10); }
+}
+
+static void headerMicro(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    g.setColor(C_FG);
+    g.fillRect(0, 0, 6, 56);
+    drawPixelText(g, "LISTO.  " + shortDate(t), 12, 3, 2, C_FG);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    drawPixelText(g, buf, 120, 18, 6, C_ACC, 1);
+}
+
+// =====================================================
+// ESTILO AVENTURA (fantasia 16-bit)
+// =====================================================
+static void drawHearts(MiniGrafx &g, int16_t x, int16_t y, uint8_t filled, uint8_t total, uint8_t scale) {
+    for (uint8_t i = 0; i < total; i++)
+        drawSprite8(g, i < filled ? SPRITE_HEART : SPRITE_HEART_EMPTY, x + i * 9 * scale, y, scale,
+                    i < filled ? C_SEC : C_FG);
+}
+
+static void drawDialogBox(MiniGrafx &g, int16_t x, int16_t y, int16_t w, int16_t h) {
+    g.setColor(C_BG);
+    g.fillRect(x, y, w, h);
+    g.setColor(C_FG);
+    g.drawRect(x, y, w, h);
+    g.drawRect(x + 3, y + 3, w - 6, h - 6);
+    g.setColor(C_ACC);   // remaches dorados en las esquinas
+    g.fillRect(x, y, 3, 3); g.fillRect(x + w - 3, y, 3, 3);
+    g.fillRect(x, y + h - 3, 3, 3); g.fillRect(x + w - 3, y + h - 3, 3, 3);
+}
+
+static void fullAdventure(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    uint8_t s = t->tm_sec;
+
+    // Marcador: vida (un corazon cada 6 segundos) y oro (dia del ano)
+    drawPixelText(g, "-VIDA-", 10, 6, 2, C_SEC);
+    drawHearts(g, 10, 20, s / 6 + 1, 10, 1);
+    g.setColor(C_ACC);
+    g.fillCircle(176, 24, 5);
+    g.setColor(C_BG);
+    g.drawVerticalLine(176, 21, 7);
+    drawPixelText(g, "ORO", 188, 6, 2, C_ACC);
+    sprintf(buf, "X%03d", t->tm_yday + 1);
+    drawPixelText(g, buf, 186, 20, 2, C_FG);
+    g.setColor(C_FG);
+    g.drawHorizontalLine(6, 34, 228);
+
+    // Escenario: hierba y piedras en posiciones fijas
+    for (uint8_t i = 0; i < 26; i++) {
+        int16_t x = (i * 73 + 17) % 228 + 6, y = (i * 41 + 29) % 150 + 44;
+        g.setColor(i % 4 ? C_FG : C_SEC);
+        if (i % 4) { g.drawLine(x, y, x - 2, y - 3); g.drawLine(x, y, x + 2, y - 3); g.drawLine(x, y, x, y - 4); }
+        else g.fillCircle(x, y, 2);
+    }
+
+    // Hora en grande con sombra
+    buildTimeString(buf, t, cfg, false);
+    drawPixelText(g, buf, 120, 58, 10, C_ACC, 1, C_SEC);
+    if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 228, 112, 2, C_FG, 2);
+
+    // Cofre que se abre la primera mitad de cada 10 segundos
+    bool open = (s % 10) < 5;
+    drawSprite8(g, open ? SPRITE_CHEST_OPEN : SPRITE_CHEST_SHUT, 96, 136, 6, C_ACC);
+    if (open) drawSparkle(g, 120, 128, (s % 2) ? 8 : 5, C_FG);
+    sprintf(buf, "%02d", s);
+    drawPixelText(g, buf, 120, 190, 2, C_FG, 1);
+
+    // Cuadro de dialogo
+    drawDialogBox(g, 8, 210, 224, 98);
+    buildTimeString(buf, t, cfg, false);
+    String hora = String(buf);
+    hora.trim();
+    drawPixelText(g, "SON LAS " + hora + (cfg.is12hStyle ? (t->tm_hour >= 12 ? " PM." : " AM.") : "."), 20, 224, 2, C_FG);
+    drawPixelText(g, shortDate(t) + " " + String(1900 + t->tm_year), 20, 240, 2, C_FG);
+    drawPixelText(g, "HACE " + ex.temperature + " EN", 20, 256, 2, C_FG, 0, C_NONE, 200);
+    drawPixelText(g, ex.location + ": " + ex.description, 20, 272, 2, C_FG, 0, C_NONE, 200);
+    if (s % 2 == 0) { g.setColor(C_ACC); g.fillTriangle(212, 290, 222, 290, 217, 297); }
+}
+
+static void headerAdventure(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    drawHearts(g, 4, 3, t->tm_sec / 6 + 1, 10, 1);
+    drawPixelText(g, shortDate(t), 100, 4, 1, C_FG);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    drawPixelText(g, buf, 120, 16, 7, C_ACC, 1, C_SEC);
+}
+
+// =====================================================
+// ESTILO VELOCIDAD (carreras arcade 16-bit)
+// =====================================================
+static void fullSpeed(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    uint8_t s = t->tm_sec;
+    const int16_t hy = 186, vx = 120;   // horizonte y punto de fuga
+
+    // Marcador
+    drawPixelText(g, "TIEMPO", 8, 6, 2, C_ACC);
+    sprintf(buf, "VUELTA %02d/24", t->tm_hour + 1);
+    drawPixelText(g, buf, 232, 6, 2, C_ACC, 2);
+    buildTimeString(buf, t, cfg, false);
+    drawPixelText(g, buf, 114, 24, 10, C_FG, 1, C_SEC, 240, 2);   // cursiva
+    if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 232, 66, 2, C_ACC, 2);
+    drawPixelText(g, ex.temperature + "  " + ex.description, 120, 88, 2, C_ACC, 1, C_NONE, 228);
+
+    // Sol con franjas
+    g.setColor(C_ACC);
+    g.fillCircle(vx, hy - 10, 46);
+    g.setColor(C_BG);
+    for (int16_t i = 0, y = hy - 22; y < hy; i++, y += 6) g.fillRect(vx - 50, y, 100, 1 + i);
+    g.fillRect(0, hy - 10 + 47, 240, 20);   // borra el sol bajo el horizonte
+
+    // Montanas
+    g.setColor(C_SEC);
+    const int16_t peaks[] = {0, 160, 30, 140, 60, 170, 180, 150, 210, 132, 240, 162};
+    for (uint8_t i = 0; i < 5; i++) g.drawLine(peaks[i * 2], peaks[i * 2 + 1], peaks[i * 2 + 2], peaks[i * 2 + 3]);
+    g.drawLine(60, 170, 90, hy); g.drawLine(150, hy, 180, 150);
+
+    // Suelo en rejilla con perspectiva (se desplaza con los segundos)
+    g.setColor(C_SEC);
+    g.drawHorizontalLine(0, hy, 240);
+    for (uint8_t k = 1; k < 12; k++) {
+        float z = k + (s % 4) / 4.0f;
+        int16_t y = hy + (int16_t)(z * z * 1.1f);
+        if (y < 320) g.drawHorizontalLine(0, y, 240);
+    }
+    for (int8_t k = -6; k <= 6; k++) g.drawLine(vx + k * 4, hy, vx + k * 44, 320);
+
+    // Carretera
+    g.setColor(C_BG);
+    g.fillTriangle(vx, hy, vx - 110, 320, vx + 110, 320);
+    g.setColor(C_FG);
+    g.drawLine(vx - 2, hy, vx - 112, 319);
+    g.drawLine(vx + 2, hy, vx + 112, 319);
+    for (uint8_t k = 0; k < 8; k++) {   // lineas centrales en movimiento
+        float z0 = k * 2 + (s % 2), z1 = z0 + 1;
+        int16_t y0 = hy + (int16_t)(z0 * z0 * 0.55f), y1 = hy + (int16_t)(z1 * z1 * 0.55f);
+        if (y0 >= 320) break;
+        g.fillRect(vx - 1 - z0 / 6, y0, 3 + z0 / 3, y1 - y0);
+    }
+
+    // Velocimetro
+    g.setColor(C_BG);
+    g.fillRect(2, 280, 66, 38);
+    g.setColor(C_SEC);
+    g.drawRect(2, 280, 66, 38);
+    sprintf(buf, "%d", 180 + s * 2);
+    drawPixelText(g, buf, 8, 284, 4, C_ACC, 0, C_NONE, 240, 1);
+    drawPixelText(g, "KM/H", 8, 306, 2, C_FG);
+    drawPixelText(g, shortDate(t), 232, 306, 2, C_FG, 2);
+}
+
+static void headerSpeed(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    for (uint8_t i = 0; i < 5; i++) {   // lineas de velocidad
+        g.setColor(i % 2 ? C_SEC : C_ACC);
+        g.drawHorizontalLine(2 + i * 3, 18 + i * 7, 22 - i * 3);
+    }
+    drawPixelText(g, "TIEMPO  " + shortDate(t), 30, 3, 2, C_ACC);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    drawPixelText(g, buf, 126, 17, 7, C_FG, 1, C_SEC, 240, 1);
+}
+
+// =====================================================
+// ESTILO PLATAFORMAS (8-bit)
+// =====================================================
+static void drawCloud(MiniGrafx &g, int16_t x, int16_t y, uint8_t size) {
+    g.setColor(C_FG);
+    g.fillCircle(x, y, size);
+    g.fillCircle(x + size, y - size / 2, size);
+    g.fillCircle(x + size * 2, y, size);
+    g.fillRect(x, y, size * 2, size);
+}
+
+static void fullPlatform(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    uint8_t s = t->tm_sec;
+
+    // Nubes que avanzan despacio
+    drawCloud(g, (s * 2 + 10) % 280 - 30, 64, 10);
+    drawCloud(g, (s * 2 + 150) % 280 - 30, 44, 8);
+
+    drawPixelText(g, ex.temperature + " " + ex.location, 8, 6, 2, C_FG, 0, C_NONE, 140);
+    drawPixelText(g, shortDate(t), 232, 6, 2, C_FG, 2);
+    drawPixelText(g, ex.description, 8, 20, 2, C_FG, 0, C_NONE, 224);
+
+    // Colinas
+    g.setColor(C_SEC);
+    g.fillCircle(48, 300, 62);
+    g.fillCircle(196, 306, 46);
+
+    // Hora hecha de bloques
+    buildTimeString(buf, t, cfg, false);
+    drawBlockText(g, buf, 120, 88, 10, C_ACC, C_FG, C_SEC);
+    if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 232, 142, 2, C_FG, 2);
+
+    // Plataforma flotante con los segundos
+    sprintf(buf, "%02d", s);
+    drawBlockText(g, buf, 120, 166, 5, C_ACC, C_FG, C_SEC);
+
+    // Estrellas que la mascota va recogiendo
+    int16_t px = 8 + s * 3;
+    for (uint8_t i = 0; i < 5; i++) {
+        int16_t sx = 36 + i * 40;
+        if (sx > px + 12) drawSprite8(g, SPRITE_STAR, sx, 214, 2, C_FG);
+    }
+    bool jump = s % 2;
+    drawSprite8(g, jump ? SPRITE_BLOB_A : SPRITE_BLOB_B, px, jump ? 232 : 248, 3, C_FG);
+
+    // Suelo de bloques con hierba
+    g.setColor(C_SEC);
+    g.fillRect(0, 272, 240, 6);
+    for (int16_t x = 0; x < 240; x += 20)
+        for (int16_t y = 278; y < 320; y += 20) {
+            g.setColor(C_ACC); g.fillRect(x, y, 19, 19);
+            g.setColor(C_FG);  g.drawHorizontalLine(x, y, 19); g.drawVerticalLine(x, y, 19);
+        }
+}
+
+static void headerPlatform(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    drawCloud(g, 6, 12, 6);
+    drawPixelText(g, shortDate(t), 40, 3, 2, C_FG);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    drawBlockText(g, buf, 128, 18, 6, C_ACC, C_FG, C_SEC);
+}
+
+// =====================================================
 // API PUBLICA
 // =====================================================
 void clockDrawHeader(MiniGrafx &gfx, const struct tm *t, const AppConfig &cfg) {
@@ -720,6 +1368,14 @@ void clockDrawHeader(MiniGrafx &gfx, const struct tm *t, const AppConfig &cfg) {
         case CLOCK_ARCADE:   headerPixel(gfx, t, cfg, false); break;
         case CLOCK_HANDHELD: headerPixel(gfx, t, cfg, true); break;
         case CLOCK_FUTURE:   headerFuture(gfx, t, cfg); break;
+        case CLOCK_ANALOG:   headerAnalog(gfx, t, cfg); break;
+        case CLOCK_MONO:     headerMono(gfx, t, cfg); break;
+        case CLOCK_DESKTOP:  headerDesktop(gfx, t, cfg); break;
+        case CLOCK_TERMINAL: headerTerminal(gfx, t, cfg); break;
+        case CLOCK_MICRO:    headerMicro(gfx, t, cfg); break;
+        case CLOCK_ADVENTURE:headerAdventure(gfx, t, cfg); break;
+        case CLOCK_SPEED:    headerSpeed(gfx, t, cfg); break;
+        case CLOCK_PLATFORM: headerPlatform(gfx, t, cfg); break;
         default:             headerClassic(gfx, t, cfg); break;
     }
     gfx.setTransparentColor(C_BG);   // los iconos del tiempo usan el fondo como transparente
@@ -733,6 +1389,14 @@ void clockDrawFull(MiniGrafx &gfx, const struct tm *t, const AppConfig &cfg, con
         case CLOCK_ARCADE:   fullPixel(gfx, t, cfg, extras, false); break;
         case CLOCK_HANDHELD: fullPixel(gfx, t, cfg, extras, true); break;
         case CLOCK_FUTURE:   fullFuture(gfx, t, cfg, extras); break;
+        case CLOCK_ANALOG:   fullAnalog(gfx, t, cfg, extras); break;
+        case CLOCK_MONO:     fullMono(gfx, t, cfg, extras); break;
+        case CLOCK_DESKTOP:  fullDesktop(gfx, t, cfg, extras); break;
+        case CLOCK_TERMINAL: fullTerminal(gfx, t, cfg, extras); break;
+        case CLOCK_MICRO:    fullMicro(gfx, t, cfg, extras); break;
+        case CLOCK_ADVENTURE:fullAdventure(gfx, t, cfg, extras); break;
+        case CLOCK_SPEED:    fullSpeed(gfx, t, cfg, extras); break;
+        case CLOCK_PLATFORM: fullPlatform(gfx, t, cfg, extras); break;
         default:             fullClassic(gfx, t, cfg, extras); break;
     }
     gfx.setTransparentColor(C_BG);   // los iconos del tiempo usan el fondo como transparente

@@ -2,6 +2,7 @@
 #include <Updater.h>
 #include "clock_page.h"
 #include "version.h"
+#include "bmp_writer.h"
 
 // Escapa texto para usarlo dentro de atributos value='...' del HTML
 static String htmlEscape(const char *in) {
@@ -109,6 +110,7 @@ void WebPortal::setupRoutes() {
     server.on("/update-check", HTTP_POST, [this]() { handleUpdateCheck(); });
     server.on("/auto-update-save", HTTP_POST, [this]() { handleAutoUpdateSave(); });
     server.on("/clock-save", HTTP_POST, [this]() { handleClockSave(); });
+    server.on("/clock-preview.bmp", HTTP_GET, [this]() { handleClockPreview(); });
     server.on("/update", HTTP_POST,
         [this]() {
             server.sendHeader("Connection", "close");
@@ -461,6 +463,37 @@ void WebPortal::handleClock() {
                    ",BR=" + String(configMgr->config.brightness) + ";";
     server.sendContent(state);
     server.sendContent_P(CLOCK_PAGE_TAIL);
+}
+
+void WebPortal::handleClockPreview() {
+    // Dibuja el estilo pedido en el framebuffer (sin enviarlo a la pantalla:
+    // el bucle principal lo redibuja todo en la siguiente vuelta) y lo envía
+    // como BMP fila a fila, sin reservar memoria para la imagen entera.
+    long style = server.hasArg("s") ? server.arg("s").toInt() : configMgr->config.clockStyle;
+    if (!previewRender || !previewPixel || style < 0 || style >= CLOCK_STYLE_MAX) {
+        server.send(404, "text/plain", "Sin vista previa");
+        return;
+    }
+    const uint16_t W = 240, H = 320;
+    uint16_t pal[4];
+    previewRender((uint8_t)style, pal);
+
+    server.sendHeader("Cache-Control", "no-store");
+    server.setContentLength(bmp4FileSize(W, H));
+    server.send(200, "image/bmp", "");
+    uint8_t buf[BMP4_HEADER_SIZE > 480 ? BMP4_HEADER_SIZE : 480];   // 4 filas de 120 bytes
+    bmp4Header(buf, W, H, pal);
+    server.sendContent((const char *)buf, BMP4_HEADER_SIZE);
+    const uint32_t rowBytes = bmp4RowBytes(W);
+    for (int16_t y = H - 1; y >= 0; y -= 4) {
+        uint8_t rows = 0;
+        for (; rows < 4 && y - rows >= 0; rows++) {
+            int16_t yy = y - rows;
+            bmp4PackRow(buf + rows * rowBytes, W, [&](uint16_t x) { return previewPixel(x, yy); });
+        }
+        server.sendContent((const char *)buf, rows * rowBytes);
+        yield();
+    }
 }
 
 void WebPortal::handleClockSave() {

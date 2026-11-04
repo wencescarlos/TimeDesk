@@ -32,7 +32,7 @@
 #define NTP_SERVERS           "pool.ntp.org"
 
 #define MAX_FORECASTS         12
-#define CLOCK_STYLE_MAX       6       // Numero de estilos de reloj (ver clock_styles.h)
+#define CLOCK_STYLE_MAX       14      // Numero de estilos de reloj (ver clock_styles.h)
 #define DEFAULT_UPDATE_REPO   "wencescarlos/TimeDesk"
 #define DEFAULT_UPDATE_HOUR   4       // 04:xx, con la pantalla normalmente apagada
 #define WEB_SERVER_PORT       80

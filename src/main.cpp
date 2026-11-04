@@ -123,6 +123,7 @@ void drawSettingsScreen();
 void drawClockScreen();
 void setBacklight(bool on);
 void runGithubUpdate(bool manual);
+void renderClockPreview(uint8_t style, uint16_t *pal);
 void handleSettingsTouch(TS_Point p);
 void drawSeparator(uint16_t y);
 String getTime(time_t *timestamp);
@@ -334,6 +335,8 @@ void setup() {
     
     // WiFi conectado -> iniciar servidor web en modo STA
     webPortal.setUpdater(&githubUpdater);
+    webPortal.setPreviewSource(renderClockPreview,
+                               [](uint16_t x, uint16_t y) -> uint8_t { return gfx.getPixel(x, y); });
     webPortal.beginSTA();
     
     carousel.setFrames(frames, frameCount);
@@ -583,14 +586,32 @@ void runGithubUpdate(bool manual) {
     timerPress = millis();
 }
 
-void drawClockScreen() {
-    time_t now = time(nullptr);
-    struct tm *timeinfo = localtime(&now);
+ClockExtras buildClockExtras() {
     ClockExtras extras;
     extras.temperature = String(currentWeather.temp, 1) + (configManager.config.isMetric ? "°C" : "°F");
     extras.description = currentWeather.description;
     extras.location = configManager.config.locationName;
-    clockDrawFull(gfx, timeinfo, configManager.config, extras);
+    extras.freeHeap = ESP.getFreeHeap();
+    extras.uptimeSec = millis() / 1000;
+    return extras;
+}
+
+void drawClockScreen() {
+    time_t now = time(nullptr);
+    struct tm *timeinfo = localtime(&now);
+    clockDrawFull(gfx, timeinfo, configManager.config, buildClockExtras());
+}
+
+// Vista previa para el portal: dibuja otro estilo en el framebuffer sin
+// tocar la paleta activa ni enviarlo a la pantalla
+void renderClockPreview(uint8_t style, uint16_t *pal) {
+    AppConfig c = configManager.config;
+    c.clockStyle = style;
+    time_t now = time(nullptr);
+    struct tm *timeinfo = localtime(&now);
+    gfx.fillBuffer(MINI_BLACK);
+    clockDrawFull(gfx, timeinfo, c, buildClockExtras());
+    clockApplyPalette(style, pal);
 }
 
 // =====================================================
