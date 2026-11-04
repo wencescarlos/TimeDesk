@@ -125,7 +125,7 @@ void WebPortal::handleRoot() {
     server.sendContent(F(
         "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Estacion Meteorologica</title><style>"
+        "<title>TimeDesk</title><style>"
         "*{box-sizing:border-box;margin:0;padding:0}"
         "body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh}"
         ".header{background:linear-gradient(135deg,#16213e,#1a1a2e);padding:24px;text-align:center;"
@@ -172,7 +172,7 @@ void WebPortal::handleRoot() {
 
     // ── 2. Cabecera + navegación ─────────────────────────────────────────────
     server.sendContent(F(
-        "<div class='header'><h1>\xF0\x9F\x8C\xA4\xEF\xB8\x8F Estacion Meteorologica</h1>"
+        "<div class='header'><h1>&#128338; TimeDesk</h1>"
         "<p>Panel de Configuracion</p></div>"
         "<div class='container'>"
         "<div class='nav-links'>"
@@ -575,7 +575,7 @@ String WebPortal::getTimezoneOptions() {
 String WebPortal::generateScheduleHTML() {
     String html = F("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Horario Pantalla</title>"
+        "<title>TimeDesk · Horario</title>"
         "<style>"
         "*{box-sizing:border-box;margin:0;padding:0}"
         "body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh;padding:20px}"
@@ -648,7 +648,7 @@ String WebPortal::generateScheduleHTML() {
 String WebPortal::generateUpdateHTML() {
     String html = F("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Actualización OTA</title>"
+        "<title>TimeDesk · Actualizaciones</title>"
         "<style>"
         "*{box-sizing:border-box;margin:0;padding:0}"
         "body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh}"
@@ -687,8 +687,8 @@ String WebPortal::generateUpdateHTML() {
         ".nav-links a:hover{background:#4cc9f0;color:#000}"
         "</style></head><body>");
 
-    html += F("<div class='header'><h1>🌤️ Estación Meteorológica</h1>"
-        "<p>Actualización de Firmware OTA</p></div>"
+    html += F("<div class='header'><h1>🕒 TimeDesk</h1>"
+        "<p>Actualizaciones de firmware</p></div>"
         "<div class='container'>"
         "<div class='nav-links'>"
         "<a href='/'>🏠 Inicio</a>"

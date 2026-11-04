@@ -1,6 +1,6 @@
 /**
  * config.h - Configuración y constantes del proyecto
- * Estación Meteorológica ESP8266 con portal web
+ * TimeDesk - Reloj y estación meteorológica de escritorio (ESP8266)
  */
 #ifndef CONFIG_H
 #define CONFIG_H
@@ -19,9 +19,9 @@
 // =====================================================
 // CONSTANTES DEL SISTEMA
 // =====================================================
-#define WIFI_HOSTNAME       "Estacion-Meteo"
-#define AP_SSID             "EstacionMeteo-Config"
-#define AP_PASSWORD         "meteo1234"
+#define WIFI_HOSTNAME       "TimeDesk"
+#define AP_SSID             "TimeDesk-Config"
+#define AP_PASSWORD         "timedesk1234"
 #define CONFIG_FILE         "/config.json"
 #define CALIB_FILE          "/calibration.json"
 

@@ -56,8 +56,8 @@ Las librerías se descargan solas al compilar:
 
 1. Al encenderlo por primera vez, mantén pulsada la pantalla si quieres calibrar el táctil (la calibración se guarda y no vuelve a pedirse).
 2. Sin WiFi configurado, el dispositivo crea un **punto de acceso**:
-   - Red: `EstacionMeteo-Config`
-   - Contraseña: `meteo1234`
+   - Red: `TimeDesk-Config`
+   - Contraseña: `timedesk1234`
 3. Conéctate desde el móvil o el PC. El portal se abre solo; si no, ve a `http://192.168.4.1`.
 4. Rellena:
    - **WiFi**: busca tu red y escribe la contraseña.
@@ -177,8 +177,9 @@ Constantes de `include/config.h`:
 | `SLEEP_INTERVAL_SECS` | `30` | Segundos sin tocar la pantalla antes de apagarla (solo dentro del horario de apagado) |
 | `MAX_FORECASTS` | `12` | Periodos de pronóstico descargados |
 | `WEB_SERVER_PORT` | `80` | Puerto del portal web |
-| `AP_SSID` | `EstacionMeteo-Config` | Nombre del punto de acceso de configuración |
-| `AP_PASSWORD` | `meteo1234` | Contraseña del punto de acceso |
+| `WIFI_HOSTNAME` | `TimeDesk` | Nombre con el que aparece en el router |
+| `AP_SSID` | `TimeDesk-Config` | Nombre del punto de acceso de configuración |
+| `AP_PASSWORD` | `timedesk1234` | Contraseña del punto de acceso |
 | `DEFAULT_UPDATE_REPO` | `wencescarlos/TimeDesk` | Repositorio de las actualizaciones automáticas |
 | `DEFAULT_UPDATE_HOUR` | `4` | Hora de la comprobación diaria |
 

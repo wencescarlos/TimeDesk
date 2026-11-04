@@ -13,7 +13,7 @@
 
 static const char CLOCK_PAGE_HEAD[] PROGMEM = R"HTML(<!DOCTYPE html><html><head><meta charset='UTF-8'>
 <meta name='viewport' content='width=device-width,initial-scale=1'>
-<title>Estilos de Reloj</title><style>
+<title>TimeDesk · Estilos de reloj</title><style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh}
 .header{background:linear-gradient(135deg,#16213e,#1a1a2e);padding:24px;text-align:center;border-bottom:2px solid #4cc9f0}

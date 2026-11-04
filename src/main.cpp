@@ -1,13 +1,13 @@
 /**
- * Estación Meteorológica ESP8266 - Rediseño PlatformIO
+ * TimeDesk - Reloj y estación meteorológica de escritorio
  * 
  * Características:
- * - Portal web de configuración (AP mode + STA mode)
- * - Configuración WiFi, API, zona horaria por web
+ * - 6 estilos de reloj cambiables en caliente
+ * - Tiempo, pronóstico y fase lunar (OpenWeatherMap)
+ * - Portal web de configuración (modo AP + modo estación)
  * - Horario de encendido/apagado por web y menú táctil
+ * - Actualización automática diaria desde GitHub Releases
  * - Almacenamiento persistente con LittleFS + JSON
- * - Menú táctil mejorado con pantalla de ajustes
- * - Servidor web activo en modo estación para cambios en caliente
  * 
  * Hardware: ESP8266 + ILI9341 TFT 240x320 + XPT2046 Touch
  * 
@@ -208,9 +208,8 @@ void initTime() {
 void setup() {
     Serial.begin(115200);
     Serial.println(F("\n\n================================="));
-    Serial.print(F(" Estación Meteorológica v"));
+    Serial.print(F(" TimeDesk v"));
     Serial.println(F(FIRMWARE_VERSION));
-    Serial.println(F(" PlatformIO + Portal Web"));
     Serial.println(F("=================================\n"));
     
     // Inicializar pantalla
@@ -238,8 +237,14 @@ void setup() {
     boolean isCalibrationAvailable = touchController.loadCalibration();
     
     gfx.fillBuffer(MINI_BLACK);
-    gfx.setFont(ArialRoundedMTBold_14);
     gfx.setTextAlignment(TEXT_ALIGN_CENTER);
+    gfx.setFont(ArialRoundedMTBold_36);
+    gfx.setColor(MINI_YELLOW);
+    gfx.drawString(120, 50, F("TimeDesk"));
+    gfx.setFont(ArialMT_Plain_10);
+    gfx.setColor(MINI_BLUE);
+    gfx.drawString(120, 96, "v" FIRMWARE_VERSION);
+    gfx.setFont(ArialRoundedMTBold_14);
     gfx.setColor(MINI_WHITE);
     gfx.drawString(120, 140, F("Mantén presionado"));
     gfx.drawString(120, 160, F("para calibrar pantalla"));
