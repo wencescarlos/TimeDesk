@@ -222,3 +222,9 @@ TimeDesk/
 └── .github/workflows/
     └── release.yml           # Compila y publica la Release al crear un tag vX.Y.Z
 ```
+
+## Licencia
+
+TimeDesk se distribuye bajo la licencia **MIT** (ver [`LICENSE`](LICENSE)).
+
+Los componentes de terceros que incluye o con los que se enlaza el firmware, con sus avisos de copyright y licencias, están en [`NOTICE`](NOTICE). Si redistribuyes el código o el firmware compilado, incluye ambos ficheros.
