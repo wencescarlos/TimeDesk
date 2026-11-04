@@ -21,6 +21,7 @@ public:
     void handleClient();
     bool isAPMode();
     bool shouldRestart();
+    bool consumeShowClockRequest();   // true una vez si la web pidio mostrar el reloj
     String getLocalIP();
     
 private:
@@ -29,6 +30,7 @@ private:
     ConfigManager *configMgr;
     bool apMode;
     bool restartRequested;
+    bool showClockRequested;
     
     void setupRoutes();
     void handleRoot();
@@ -41,6 +43,8 @@ private:
     void handleUpdate();
     void handleUpdateUpload();
     void handleNotFound();
+    void handleClock();
+    void handleClockSave();
 
     String generateScheduleHTML();
     String generateUpdateHTML();

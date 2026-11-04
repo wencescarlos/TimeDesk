@@ -31,6 +31,7 @@
 #define NTP_SERVERS           "pool.ntp.org"
 
 #define MAX_FORECASTS         12
+#define CLOCK_STYLE_MAX       6       // Numero de estilos de reloj (ver clock_styles.h)
 #define WEB_SERVER_PORT       80
 
 // =====================================================
@@ -97,6 +98,11 @@ struct AppConfig {
     
     // Intervalo actualización (minutos)
     uint16_t updateIntervalMin;
+    
+    // Estilo visual del reloj (ver clock_styles.h)
+    uint8_t clockStyle;
+    // Arrancar en la pantalla de reloj a pantalla completa
+    bool startOnClock;
 };
 
 #endif

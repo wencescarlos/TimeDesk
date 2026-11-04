@@ -1,8 +1,37 @@
 #include "web_portal.h"
 #include <Updater.h>
+#include "clock_page.h"
+
+// Escapa texto para usarlo dentro de atributos value='...' del HTML
+static String htmlEscape(const char *in) {
+    String out;
+    for (const char *p = in; *p; p++) {
+        switch (*p) {
+            case '&':  out += F("&amp;"); break;
+            case '<':  out += F("&lt;"); break;
+            case '>':  out += F("&gt;"); break;
+            case '\'': out += F("&#39;"); break;
+            case '"':  out += F("&quot;"); break;
+            default:   out += *p;
+        }
+    }
+    return out;
+}
+
+// Escapa texto para cadenas JSON
+static String jsonEscape(const String &in) {
+    String out;
+    for (uint16_t i = 0; i < in.length(); i++) {
+        char c = in[i];
+        if (c == '"' || c == '\\') { out += '\\'; out += c; }
+        else if ((uint8_t)c < 0x20) out += ' ';
+        else out += c;
+    }
+    return out;
+}
 
 WebPortal::WebPortal(ConfigManager *cfgMgr) 
-    : server(WEB_SERVER_PORT), configMgr(cfgMgr), apMode(false), restartRequested(false) {}
+    : server(WEB_SERVER_PORT), configMgr(cfgMgr), apMode(false), restartRequested(false), showClockRequested(false) {}
 
 void WebPortal::beginAP() {
     apMode = true;
@@ -42,6 +71,11 @@ void WebPortal::handleClient() {
 
 bool WebPortal::isAPMode() { return apMode; }
 bool WebPortal::shouldRestart() { return restartRequested; }
+bool WebPortal::consumeShowClockRequest() {
+    bool r = showClockRequested;
+    showClockRequested = false;
+    return r;
+}
 String WebPortal::getLocalIP() { return apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString(); }
 
 void WebPortal::setupRoutes() {
@@ -53,6 +87,8 @@ void WebPortal::setupRoutes() {
     server.on("/scan", HTTP_GET, [this]() { handleScanWifi(); });
     server.on("/reset", HTTP_POST, [this]() { handleReset(); });
     server.on("/update", HTTP_GET, [this]() { handleUpdate(); });
+    server.on("/clock", HTTP_GET, [this]() { handleClock(); });
+    server.on("/clock-save", HTTP_POST, [this]() { handleClockSave(); });
     server.on("/update", HTTP_POST,
         [this]() {
             server.sendHeader("Connection", "close");
@@ -118,7 +154,7 @@ void WebPortal::handleRoot() {
         "border-radius:8px;cursor:pointer;font-size:.9em;margin:8px 0}"
         ".time-inputs{display:flex;align-items:center;gap:6px}"
         ".time-inputs input{width:65px;text-align:center}"
-        ".nav-links{display:flex;gap:10px;justify-content:center;margin:16px 0}"
+        ".nav-links{display:flex;gap:10px;justify-content:center;margin:16px 0;flex-wrap:wrap}"
         ".nav-links a{color:#4cc9f0;text-decoration:none;padding:8px 16px;border:1px solid #4cc9f0;"
         "border-radius:8px;font-size:.9em;transition:all .2s}"
         ".nav-links a:hover{background:#4cc9f0;color:#000}"
@@ -131,6 +167,7 @@ void WebPortal::handleRoot() {
         "<div class='container'>"
         "<div class='nav-links'>"
         "<a href='/'>&#127968; Inicio</a>"
+        "<a href='/clock'>&#127912; Reloj</a>"
         "<a href='/schedule'>&#9200; Horario</a>"
         "<a href='/status'>&#128202; Estado</a>"
         "<a href='/update'>&#128260; OTA</a>"
@@ -145,11 +182,11 @@ void WebPortal::handleRoot() {
             "<div id='wifiList' class='wifi-list'></div>"
             "<label>SSID de la red</label>"
             "<input type='text' name='ssid' id='ssid' value='");
-        s += configMgr->config.wifiSSID;
+        s += htmlEscape(configMgr->config.wifiSSID);
         s += F("' placeholder='Nombre de tu WiFi'>"
             "<label>Contrasena</label>"
             "<input type='password' name='pass' value='");
-        s += configMgr->config.wifiPassword;
+        s += htmlEscape(configMgr->config.wifiPassword);
         s += F("' placeholder='Contrasena WiFi'></div>");
         server.sendContent(s);
     }
@@ -160,14 +197,14 @@ void WebPortal::handleRoot() {
         s += F("<div class='card'><h2>&#127757; OpenWeatherMap</h2>"
             "<label>Clave API</label>"
             "<input type='text' name='api' value='");
-        s += configMgr->config.owmApiKey;
+        s += htmlEscape(configMgr->config.owmApiKey);
         s += F("' placeholder='Tu clave API de OpenWeatherMap'>"
             "<div class='row'><div><label>ID Ubicacion</label>"
             "<input type='text' name='locid' value='");
-        s += configMgr->config.owmLocationId;
+        s += htmlEscape(configMgr->config.owmLocationId);
         s += F("'></div><div><label>Nombre</label>"
             "<input type='text' name='locname' value='");
-        s += configMgr->config.locationName;
+        s += htmlEscape(configMgr->config.locationName);
         s += F("'></div></div><label>Idioma</label><select name='lang'>");
         server.sendContent(s);
     }
@@ -326,6 +363,7 @@ void WebPortal::handleStatus() {
     json += "\"uptime\":" + String(millis() / 1000) + ",";
     json += "\"vcc\":" + String(ESP.getVcc() / 1024.0) + ",";
     json += "\"scr_on\":\"" + String(configMgr->config.screenOnHour) + ":" + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute) + "\",";
+    json += "\"clock_style\":" + String(configMgr->config.clockStyle) + ",";
     json += "\"scr_off\":\"" + String(configMgr->config.screenOffHour) + ":" + (configMgr->config.screenOffMinute < 10 ? "0" : "") + String(configMgr->config.screenOffMinute) + "\"";
     json += "}";
     server.send(200, "application/json", json);
@@ -392,6 +430,40 @@ void WebPortal::handleUpdateUpload() {
     }
 }
 
+void WebPortal::handleClock() {
+    // Pagina en flash enviada en dos trozos con el estado actual en medio
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    server.sendContent_P(CLOCK_PAGE_HEAD);
+    String state = "var CUR=" + String(configMgr->config.clockStyle) +
+                   ",START=" + String(configMgr->config.startOnClock ? 1 : 0) +
+                   ",BR=" + String(configMgr->config.brightness) + ";";
+    server.sendContent(state);
+    server.sendContent_P(CLOCK_PAGE_TAIL);
+}
+
+void WebPortal::handleClockSave() {
+    // Cambios en caliente: se guardan y se aplican sin reiniciar
+    AppConfig &c = configMgr->config;
+    if (server.hasArg("style")) {
+        long st = server.arg("style").toInt();
+        if (st < 0 || st >= CLOCK_STYLE_MAX) {
+            server.send(400, "application/json", F("{\"ok\":false,\"error\":\"estilo no valido\"}"));
+            return;
+        }
+        c.clockStyle = st;
+    }
+    if (server.hasArg("start_clock")) c.startOnClock = server.arg("start_clock").toInt() != 0;
+    if (server.hasArg("brightness")) c.brightness = constrain(server.arg("brightness").toInt(), 10, 100);
+    if (server.hasArg("show")) showClockRequested = true;
+    configMgr->save();
+
+    String json = "{\"ok\":true,\"style\":" + String(c.clockStyle) +
+                  ",\"start_clock\":" + String(c.startOnClock ? 1 : 0) +
+                  ",\"brightness\":" + String(c.brightness) + "}";
+    server.send(200, "application/json", json);
+}
+
 void WebPortal::handleNotFound() {
     // Captive portal redirect
     if (apMode) {
@@ -407,7 +479,7 @@ String WebPortal::getWifiNetworks() {
     String json = "[";
     for (int i = 0; i < n; i++) {
         if (i > 0) json += ",";
-        json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + 
+        json += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + 
                 ",\"enc\":" + String(WiFi.encryptionType(i) != ENC_TYPE_NONE ? 1 : 0) + "}";
     }
     json += "]";
@@ -503,6 +575,7 @@ String WebPortal::generateScheduleHTML() {
     html += F("<button type='submit'>💾 Guardar Horario</button>"
         "</form>"
         "<a href='/'>← Inicio</a>"
+        "<a href='/clock'>🎨 Estilos de reloj</a>"
         "<a href='/update'>🔄 Actualización OTA</a>"
         "</div></body></html>");
     
@@ -556,6 +629,7 @@ String WebPortal::generateUpdateHTML() {
         "<div class='container'>"
         "<div class='nav-links'>"
         "<a href='/'>🏠 Inicio</a>"
+        "<a href='/clock'>🎨 Reloj</a>"
         "<a href='/schedule'>⏰ Horario</a>"
         "<a href='/status'>📊 Estado</a>"
         "<a href='/update'>🔄 OTA</a>"

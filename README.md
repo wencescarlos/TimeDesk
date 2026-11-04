@@ -1,4 +1,4 @@
-# Estacion Meteorologica ESP8266 v1.0.0
+# Estacion Meteorologica ESP8266 v1.1.0
 
 Rediseno completo del proyecto ThingPulse Weather Station para **PlatformIO** con portal web de configuracion, menu tactil de ajustes y gestion de horario de pantalla.
 
@@ -21,6 +21,7 @@ Rediseno completo del proyecto ThingPulse Weather Station para **PlatformIO** co
 | Brillo pantalla | Hardcoded | **Configurable por web** |
 | Reset fabrica | No tiene | **Desde web** |
 | DNS Captive Portal | No tiene | **Redirige automaticamente** |
+| Estilos de reloj | No tiene | **6 temas cambiables en caliente desde la web** |
 
 ## Hardware necesario
 
@@ -91,10 +92,29 @@ Una vez conectado a tu WiFi, el servidor web sigue activo en el puerto 80. Acced
 | Ruta | Descripcion |
 |------|-------------|
 | `/` | Configuracion completa |
+| `/clock` | Estilos de reloj, brillo y pantalla de inicio (sin reiniciar) |
 | `/schedule` | Ajuste de horario de pantalla |
 | `/status` | Estado del dispositivo (JSON) |
 | `/scan` | Escaneo de redes WiFi (JSON) |
 | `/reset` | Restaurar valores de fabrica |
+| `/update` | Actualizacion de firmware OTA |
+
+## Estilos de reloj
+
+Desde `http://<IP>/clock` eliges el estilo con una vista previa animada de cada uno. El cambio se aplica al momento, sin reiniciar. Tambien se puede cambiar tocando la fila **Estilo reloj** en la pantalla de Ajustes.
+
+| Estilo | Paleta | Pantalla de reloj completa |
+|--------|--------|---------------------------|
+| **Clasico** | Blanco / amarillo / azul | Hora grande, barra de segundos y tiempo actual |
+| **Retro** | Ambar sobre negro | LCD de 7 segmentos con segmentos "fantasma", indicador de dia de la semana y AM/PM |
+| **Anime** | Indigo / rosa sakura / lavanda | Vineta manga con lineas de velocidad, brillos, carita kawaii que parpadea y bocadillo con el tiempo |
+| **Arcade** | Negro / blanco / amarillo / rojo | Pixel art 8-bit: "nivel" (dia del ano), vidas, barra de experiencia de segundos y mascota que salta |
+| **Portatil** | 4 tonos de verde LCD | Como Arcade, dentro del marco de una consola de bolsillo |
+| **Futurista** | Cian / magenta neon | HUD sci-fi con anillo de 60 marcas de segundos y paneles de datos |
+
+Cada estilo cambia la paleta de 4 colores de toda la interfaz (la pantalla trabaja a 2 bits por pixel para que el framebuffer quepa en la RAM del ESP8266) y redibuja la hora de la cabecera de la pantalla principal. Todo se dibuja con primitivas (sin bitmaps), asi que no ocupa espacio extra en el sistema de archivos.
+
+Para anadir un estilo nuevo: anade una entrada a `ClockStyle` y a `PALETTES` en `src/clock_styles.cpp`, sus funciones `header*`/`full*`, sube `CLOCK_STYLE_MAX` en `config.h` y anade la vista previa en `include/clock_page.h`.
 
 ## Pantallas del dispositivo
 
@@ -108,11 +128,12 @@ Una vez conectado a tu WiFi, el servidor web sigue activo en el puerto 80. Acced
 Las pantallas disponibles son:
 
 - **Principal** (0): Tiempo actual, hora y fecha
-- **Detalle** (1): Datos extendidos del tiempo
-- **Prevision 1** (2): Pronostico proximos dias
-- **Prevision 2** (3): Pronostico extendido
-- **Sobre el dispositivo** (4): IP, version firmware, estado
-- **Ajustes** (5): Configuracion tactil
+- **Reloj** (1): Reloj a pantalla completa segun el estilo elegido
+- **Detalle** (2): Datos extendidos del tiempo
+- **Prevision 1** (3): Pronostico proximos dias
+- **Prevision 2** (4): Pronostico extendido
+- **Sobre el dispositivo** (5): IP, version firmware, estado
+- **Ajustes** (6): Configuracion tactil
 
 ### Pantalla de Ajustes
 
@@ -120,6 +141,7 @@ Desde el menu tactil puedes:
 - Cambiar formato 12h/24h
 - Cambiar unidades metricas/imperiales
 - Activar/desactivar horario automatico de pantalla
+- Cambiar el estilo del reloj
 - Ajustar hora de encendido (+/- con botones)
 - Ajustar hora de apagado (+/- con botones)
 - Guardar cambios
@@ -149,6 +171,8 @@ weather-station/
 |   |-- config.h            # Constantes, pines y estructura de config
 |   |-- config_manager.h    # Gestion JSON persistente con LittleFS
 |   |-- web_portal.h        # Portal web (header)
+|   |-- clock_styles.h      # API de estilos de reloj
+|   |-- clock_page.h        # Pagina web /clock (en flash)
 |   |-- TouchControllerWS.h # Controlador tactil (actualizado a LittleFS)
 |   |-- TZinfo.h            # Base de datos de zonas horarias
 |   |-- ArialRounded.h      # Fuentes tipograficas
@@ -157,6 +181,7 @@ weather-station/
 |-- src/
 |   |-- main.cpp            # Aplicacion principal
 |   |-- web_portal.cpp      # Implementacion del portal web
+|   |-- clock_styles.cpp    # Paletas y dibujo de los estilos de reloj
 |   `-- TouchControllerWS.cpp
 `-- data/                   # (vacio, config se crea en runtime)
 ```
@@ -166,10 +191,6 @@ weather-station/
 Obtén tu clave gratuita en: https://openweathermap.org/api
 
 Para encontrar tu ID de ubicacion: https://openweathermap.org/find
-
-## Compilacion automatica (CI)
-
-El repositorio incluye un workflow de GitHub Actions que compila el firmware automaticamente en cada push y genera el artefacto `.bin` listo para flashear. El nombre del artefacto incluye la version definida en `include/version.h`.
 
 ## Licencia
 

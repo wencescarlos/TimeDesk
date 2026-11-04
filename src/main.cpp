@@ -39,6 +39,7 @@
 #include "ArialRounded.h"
 #include "moonphases.h"
 #include "weathericons.h"
+#include "clock_styles.h"
 
 
 // =====================================================
@@ -65,8 +66,18 @@ SunMoonCalc::Moon moonData;
 // =====================================================
 // VARIABLES DE ESTADO
 // =====================================================
-uint8_t screen = 0;
-int screenCount = 6;  // 0=main, 1=detail, 2-3=forecast, 4=about, 5=settings
+enum Screen : uint8_t {
+    SCR_MAIN = 0,      // Tiempo actual, hora y fecha
+    SCR_CLOCK,         // Reloj a pantalla completa (segun el estilo elegido)
+    SCR_DETAIL,        // Datos extendidos del tiempo
+    SCR_FORECAST1,     // Pronostico 1
+    SCR_FORECAST2,     // Pronostico 2
+    SCR_ABOUT,         // Informacion del dispositivo
+    SCR_SETTINGS,      // Ajustes tactiles
+    SCR_COUNT
+};
+uint8_t screen = SCR_MAIN;
+int screenCount = SCR_COUNT;
 long lastDownloadUpdate = 0;
 long timerPress = 0;
 bool canBtnPress = true;
@@ -106,6 +117,8 @@ void drawLabelValue(uint8_t line, String label, String value);
 void drawForecastTable(uint8_t start);
 void drawAbout();
 void drawSettingsScreen();
+void drawClockScreen();
+void setBacklight(bool on);
 void handleSettingsTouch(TS_Point p);
 void drawSeparator(uint16_t y);
 String getTime(time_t *timestamp);
@@ -208,6 +221,11 @@ void setup() {
     // Inicializar LittleFS y cargar configuración
     configManager.begin();
     configManager.load();
+    
+    // Estilo de reloj: fuentes + paleta del tema elegido
+    clockSetFonts(ArialRoundedMTBold_14, ArialRoundedMTBold_36);
+    clockApplyPalette(configManager.config.clockStyle, palette);
+    setBacklight(true);
     
     // Inicializar touch
     Serial.println(F("[Setup] Initializing touch..."));
@@ -317,6 +335,7 @@ void setup() {
     timerPress = millis();
     lastDownloadUpdate = millis();
     canBtnPress = true;
+    screen = configManager.config.startOnClock ? SCR_CLOCK : SCR_MAIN;
     
     Serial.println(F("[Setup] Ready!"));
     Serial.printf("[Setup] Web config: http://%s/\n", WiFi.localIP().toString().c_str());
@@ -338,6 +357,13 @@ void loop() {
         ESP.restart();
     }
     
+    // Cambios en caliente desde el portal (estilo de reloj, brillo)
+    clockApplyPalette(configManager.config.clockStyle, palette);
+    if (webPortal.consumeShowClockRequest()) {
+        screen = SCR_CLOCK;
+        timerPress = millis();   // despierta la pantalla si estaba en reposo
+    }
+    
     gfx.fillBuffer(MINI_BLACK);
     
     // Gestión táctil
@@ -346,7 +372,7 @@ void loop() {
         timerPress = millis();
         
         if (!asleep) {
-            if (screen == 5) {
+            if (screen == SCR_SETTINGS) {
                 handleSettingsTouch(p);
             } else {
                 screen = changeScreen(p, screen);
@@ -355,8 +381,9 @@ void loop() {
     }
     
     if (!(asleep = sleep_mode())) {
+        setBacklight(true);   // aplica cambios de brillo hechos desde la web
         switch (screen) {
-            case 0: {
+            case SCR_MAIN: {
                 drawTime();
                 drawWifiQuality();
                 int remainingTimeBudget = carousel.update();
@@ -365,19 +392,22 @@ void loop() {
                 drawAstronomy();
                 break;
             }
-            case 1:
+            case SCR_CLOCK:
+                drawClockScreen();
+                break;
+            case SCR_DETAIL:
                 drawCurrentWeatherDetail();
                 break;
-            case 2:
+            case SCR_FORECAST1:
                 drawForecastTable(0);
                 break;
-            case 3:
+            case SCR_FORECAST2:
                 drawForecastTable(4);
                 break;
-            case 4:
+            case SCR_ABOUT:
                 drawAbout();
                 break;
-            case 5:
+            case SCR_SETTINGS:
                 drawSettingsScreen();
                 break;
         }
@@ -396,12 +426,12 @@ void loop() {
 // PANTALLA DE AJUSTES (TÁCTIL)
 // =====================================================
 void drawSettingsScreen() {
+    char buf[8];
     gfx.setFont(ArialRoundedMTBold_14);
     gfx.setTextAlignment(TEXT_ALIGN_CENTER);
     gfx.setColor(MINI_YELLOW);
-    gfx.drawString(120, 4, F("⚙ AJUSTES"));
+    gfx.drawString(120, 4, F("AJUSTES"));
     
-    gfx.setFont(ArialRoundedMTBold_14);
     gfx.setTextAlignment(TEXT_ALIGN_LEFT);
     
     // Formato 12h / 24h
@@ -422,124 +452,114 @@ void drawSettingsScreen() {
     gfx.setColor(configManager.config.screenSleepEnabled ? MINI_YELLOW : MINI_BLUE);
     gfx.drawString(150, 74, configManager.config.screenSleepEnabled ? "ON" : "OFF");
     
-    // Línea separadora
-    gfx.setColor(MINI_BLUE);
-    gfx.drawLine(0, 96, 240, 96);
-    
-    // Hora encendido
+    // Estilo de reloj (tocar para pasar al siguiente; se aplica al momento)
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(10, 104, F("Encendido:"));
+    gfx.drawString(10, 96, F("Estilo reloj:"));
     gfx.setColor(MINI_YELLOW);
-    char buf[8];
-    sprintf(buf, "%02d:%02d", configManager.config.screenOnHour, configManager.config.screenOnMinute);
-    gfx.drawString(120, 104, buf);
-    // Botones + / -
-    gfx.setColor(MINI_BLUE);
-    gfx.fillRect(200, 100, 30, 20);
-    gfx.setColor(MINI_WHITE);
-    gfx.drawString(208, 102, "+");
-    gfx.setColor(MINI_BLUE);
-    gfx.fillRect(160, 100, 30, 20);
-    gfx.setColor(MINI_WHITE);
-    gfx.drawString(170, 102, "-");
-    
-    // Hora apagado
-    gfx.setColor(MINI_WHITE);
-    gfx.drawString(10, 132, F("Apagado:"));
-    gfx.setColor(MINI_YELLOW);
-    sprintf(buf, "%02d:%02d", configManager.config.screenOffHour, configManager.config.screenOffMinute);
-    gfx.drawString(120, 132, buf);
-    // Botones + / -
-    gfx.setColor(MINI_BLUE);
-    gfx.fillRect(200, 128, 30, 20);
-    gfx.setColor(MINI_WHITE);
-    gfx.drawString(208, 130, "+");
-    gfx.setColor(MINI_BLUE);
-    gfx.fillRect(160, 128, 30, 20);
-    gfx.setColor(MINI_WHITE);
-    gfx.drawString(170, 130, "-");
+    gfx.drawString(120, 96, String(clockStyleName(configManager.config.clockStyle)) + " >");
     
     // Línea separadora
     gfx.setColor(MINI_BLUE);
-    gfx.drawLine(0, 158, 240, 158);
+    gfx.drawLine(0, 118, 240, 118);
     
-    // IP web config
-    gfx.setColor(MINI_WHITE);
+    // Hora encendido / apagado con botones - / +
+    const char *labels[] = {"Encendido:", "Apagado:"};
+    uint8_t hours[] = {configManager.config.screenOnHour, configManager.config.screenOffHour};
+    uint8_t mins[] = {configManager.config.screenOnMinute, configManager.config.screenOffMinute};
+    for (uint8_t i = 0; i < 2; i++) {
+        uint16_t y = 126 + i * 28;
+        gfx.setColor(MINI_WHITE);
+        gfx.drawString(10, y, labels[i]);
+        gfx.setColor(MINI_YELLOW);
+        sprintf(buf, "%02d:%02d", hours[i], mins[i]);
+        gfx.drawString(100, y, buf);
+        gfx.setColor(MINI_BLUE);
+        gfx.fillRect(160, y - 4, 30, 20);
+        gfx.fillRect(200, y - 4, 30, 20);
+        gfx.setColor(MINI_WHITE);
+        gfx.drawString(170, y - 2, "-");
+        gfx.drawString(208, y - 2, "+");
+    }
+    
+    // Línea separadora
+    gfx.setColor(MINI_BLUE);
+    gfx.drawLine(0, 180, 240, 180);
+    
+    // Info de red y ubicación
     gfx.setFont(ArialMT_Plain_10);
-    gfx.drawString(10, 166, F("Config web:"));
-    gfx.setColor(MINI_YELLOW);
-    gfx.drawString(80, 166, "http://" + WiFi.localIP().toString());
-    
-    // WiFi info
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(10, 182, "WiFi: " + String(configManager.config.wifiSSID));
-    gfx.drawString(10, 196, "Signal: " + String(WiFi.RSSI()) + " dBm");
-    
-    // API info
+    gfx.drawString(10, 186, F("Config web:"));
+    gfx.setColor(MINI_YELLOW);
+    gfx.drawString(80, 186, "http://" + WiFi.localIP().toString());
+    gfx.setColor(MINI_WHITE);
+    gfx.drawString(10, 200, "WiFi: " + String(configManager.config.wifiSSID) + " (" + String(WiFi.RSSI()) + " dBm)");
     gfx.drawString(10, 214, "Loc: " + String(configManager.config.locationName));
     gfx.drawString(10, 228, "TZ: " + String(configManager.config.timezone));
     
-    // Botón guardar
-    gfx.setColor(MINI_BLUE);
+    // Botones guardar / volver
     gfx.setFont(ArialRoundedMTBold_14);
-    gfx.fillRect(10, 252, 100, 26);
-    gfx.setColor(MINI_WHITE);
     gfx.setTextAlignment(TEXT_ALIGN_CENTER);
-    gfx.drawString(60, 255, "GUARDAR");
-    
-    // Botón volver
     gfx.setColor(MINI_BLUE);
+    gfx.fillRect(10, 252, 100, 26);
     gfx.fillRect(130, 252, 100, 26);
     gfx.setColor(MINI_WHITE);
+    gfx.drawString(60, 255, "GUARDAR");
     gfx.drawString(180, 255, "VOLVER");
     
-    // Actualización
-    gfx.setColor(MINI_WHITE);
     gfx.setFont(ArialMT_Plain_10);
-    gfx.setTextAlignment(TEXT_ALIGN_CENTER);
     gfx.drawString(120, 290, "Actualiza cada " + String(configManager.config.updateIntervalMin) + " min");
     gfx.drawString(120, 304, "Heap: " + String(ESP.getFreeHeap() / 1024) + "KB");
 }
 
 void handleSettingsTouch(TS_Point p) {
-    // Formato 12h/24h (y: 25-45)
-    if (p.y >= 25 && p.y < 48) {
-        configManager.config.is12hStyle = !configManager.config.is12hStyle;
-    }
-    // Métrico/Imperial (y: 48-70)
-    else if (p.y >= 48 && p.y < 72) {
-        configManager.config.isMetric = !configManager.config.isMetric;
-    }
-    // Sleep toggle (y: 72-94)
-    else if (p.y >= 72 && p.y < 96) {
-        configManager.config.screenSleepEnabled = !configManager.config.screenSleepEnabled;
-    }
-    // ON hour + (x: 200-230, y: 98-122)
-    else if (p.y >= 98 && p.y < 122 && p.x >= 200) {
-        configManager.config.screenOnHour = (configManager.config.screenOnHour + 1) % 24;
-    }
-    // ON hour - (x: 160-190, y: 98-122)
-    else if (p.y >= 98 && p.y < 122 && p.x >= 160 && p.x < 200) {
-        configManager.config.screenOnHour = (configManager.config.screenOnHour + 23) % 24;
-    }
-    // OFF hour + (x: 200-230, y: 126-150)
-    else if (p.y >= 126 && p.y < 150 && p.x >= 200) {
-        configManager.config.screenOffHour = (configManager.config.screenOffHour + 1) % 24;
-    }
-    // OFF hour - (x: 160-190, y: 126-150)
-    else if (p.y >= 126 && p.y < 150 && p.x >= 160 && p.x < 200) {
-        configManager.config.screenOffHour = (configManager.config.screenOffHour + 23) % 24;
-    }
-    // Botón GUARDAR (x: 10-110, y: 250-280)
-    else if (p.y >= 248 && p.y < 282 && p.x < 120) {
+    AppConfig &c = configManager.config;
+    if (p.y >= 25 && p.y < 47) {
+        c.is12hStyle = !c.is12hStyle;
+    } else if (p.y >= 47 && p.y < 69) {
+        c.isMetric = !c.isMetric;
+    } else if (p.y >= 69 && p.y < 91) {
+        c.screenSleepEnabled = !c.screenSleepEnabled;
+    } else if (p.y >= 91 && p.y < 116) {
+        c.clockStyle = (c.clockStyle + 1) % CLOCK_STYLE_COUNT;   // la paleta se aplica en loop()
+    } else if (p.y >= 120 && p.y < 174 && p.x >= 160) {
+        bool isOn = p.y < 148;
+        bool up = p.x >= 200;
+        uint8_t &h = isOn ? c.screenOnHour : c.screenOffHour;
+        h = (h + (up ? 1 : 23)) % 24;
+    } else if (p.y >= 248 && p.y < 282 && p.x < 120) {
         configManager.save();
         drawProgress(100, "Configuracion guardada!");
         delay(1000);
+    } else if (p.y >= 248 && p.y < 282 && p.x >= 120) {
+        screen = SCR_MAIN;
     }
-    // Botón VOLVER (x: 130-230, y: 250-280)
-    else if (p.y >= 248 && p.y < 282 && p.x >= 120) {
-        screen = 0;
-    }
+}
+
+// =====================================================
+// PANTALLA DE RELOJ COMPLETA
+// =====================================================
+void drawClockScreen() {
+    time_t now = time(nullptr);
+    struct tm *timeinfo = localtime(&now);
+    ClockExtras extras;
+    extras.temperature = String(currentWeather.temp, 1) + (configManager.config.isMetric ? "°C" : "°F");
+    extras.description = currentWeather.description;
+    extras.location = configManager.config.locationName;
+    clockDrawFull(gfx, timeinfo, configManager.config, extras);
+}
+
+// =====================================================
+// RETROILUMINACIÓN (PWM según el brillo configurado)
+// =====================================================
+void setBacklight(bool on) {
+    static int16_t current = -1;
+    int16_t level = on ? configManager.config.brightness : 0;
+    if (level == current) return;
+    current = level;
+    analogWriteRange(100);
+    if (level >= 100) digitalWrite(TFT_LED, HIGH);
+    else if (level <= 0) setBacklight(false);
+    else analogWrite(TFT_LED, level);
 }
 
 // =====================================================
@@ -581,17 +601,17 @@ bool sleep_mode() {
                 if (touchController.isTouched(0)) touchController.getPoint();
             } else {
                 sleeping = true;
-                digitalWrite(TFT_LED, LOW);
+                setBacklight(false);
             }
         } else {
             if (sleeping) {
-                digitalWrite(TFT_LED, HIGH);
+                setBacklight(true);
                 sleeping = false;
             }
         }
     } else {
         if (sleeping) {
-            digitalWrite(TFT_LED, HIGH);
+            setBacklight(true);
             sleeping = false;
         }
     }
@@ -653,43 +673,9 @@ void drawProgress(uint8_t percentage, String text) {
 }
 
 void drawTime() {
-    char time_str[11];
     time_t now = time(nullptr);
     struct tm *timeinfo = localtime(&now);
-    
-    gfx.setTextAlignment(TEXT_ALIGN_CENTER);
-    gfx.setFont(ArialRoundedMTBold_14);
-    gfx.setColor(MINI_WHITE);
-    String date = WDAY_NAMES[timeinfo->tm_wday] + " " + MONTH_NAMES[timeinfo->tm_mon] + " " + 
-                  String(timeinfo->tm_mday) + " " + String(1900 + timeinfo->tm_year);
-    gfx.drawString(120, 6, date);
-    
-    gfx.setFont(ArialRoundedMTBold_36);
-    
-    if (configManager.config.is12hStyle) {
-        int hour = (timeinfo->tm_hour + 11) % 12 + 1;
-        if (configManager.config.isHHMM) {
-            sprintf(time_str, "%2d:%02d", hour, timeinfo->tm_min);
-        } else {
-            sprintf(time_str, "%2d:%02d:%02d", hour, timeinfo->tm_min, timeinfo->tm_sec);
-        }
-    } else {
-        if (configManager.config.isHHMM) {
-            sprintf(time_str, "%02d:%02d", timeinfo->tm_hour, timeinfo->tm_min);
-        } else {
-            sprintf(time_str, "%02d:%02d:%02d", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-        }
-    }
-    
-    gfx.drawString(120, 20, time_str);
-    
-    if (configManager.config.is12hStyle) {
-        gfx.setTextAlignment(TEXT_ALIGN_LEFT);
-        gfx.setFont(ArialMT_Plain_10);
-        gfx.setColor(MINI_BLUE);
-        sprintf(time_str, "%s", timeinfo->tm_hour >= 12 ? "PM" : "AM");
-        gfx.drawString(195, 27, time_str);
-    }
+    clockDrawHeader(gfx, timeinfo, configManager.config);
 }
 
 void drawCurrentWeather() {
@@ -970,12 +956,8 @@ String getTime(time_t *timestamp) {
     uint8_t hour = timeInfo->tm_hour;
     
     if (configManager.config.is12hStyle) {
-        if (hour > 12) {
-            hour -= 12;
-            sprintf(ampm, "pm");
-        } else {
-            sprintf(ampm, "am");
-        }
+        sprintf(ampm, hour >= 12 ? "pm" : "am");
+        hour = (hour + 11) % 12 + 1;   // 0 -> 12 am, 12 -> 12 pm
         sprintf(buf, "%2d:%02d %s", hour, timeInfo->tm_min, ampm);
     } else {
         sprintf(buf, "%02d:%02d", hour, timeInfo->tm_min);
@@ -985,11 +967,7 @@ String getTime(time_t *timestamp) {
 
 char* make12_24(int hour) {
     static char hr[6];
-    if (hour > 12) {
-        sprintf(hr, "%2d pm", hour - 12);
-    } else {
-        sprintf(hr, "%2d am", hour);
-    }
+    sprintf(hr, "%2d %s", (hour + 11) % 12 + 1, hour >= 12 ? "pm" : "am");
     return hr;
 }
 
@@ -1001,13 +979,13 @@ uint8_t changeScreen(TS_Point p, uint8_t currentScreen) {
         configManager.config.is12hStyle = !configManager.config.is12hStyle;
     } else if (p.y > dividerBottom) {
         // Bottom -> settings screen
-        page = 5;
+        page = SCR_SETTINGS;
     } else if (p.x > dividerMiddle) {
-        // Left -> previous
+        // Mitad derecha -> pantalla anterior
         if (page == 0) page = screenCount;
         page--;
     } else {
-        // Right -> next
+        // Mitad izquierda -> pantalla siguiente
         page = (page + 1) % screenCount;
     }
     return page;

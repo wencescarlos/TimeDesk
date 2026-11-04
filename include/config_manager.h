@@ -36,6 +36,20 @@ public:
         config.screenSleepEnabled = false;
         config.brightness = 100;
         config.updateIntervalMin = 10;
+        config.clockStyle = 0;
+        config.startOnClock = false;
+    }
+    
+    // Corrige valores fuera de rango (p.ej. un intervalo 0 provocaria
+    // descargas continuas de la API)
+    void sanitize() {
+        config.updateIntervalMin = constrain(config.updateIntervalMin, 5, 60);
+        config.brightness = constrain(config.brightness, 10, 100);
+        config.screenOnHour %= 24;
+        config.screenOffHour %= 24;
+        config.screenOnMinute %= 60;
+        config.screenOffMinute %= 60;
+        if (config.clockStyle >= CLOCK_STYLE_MAX) config.clockStyle = 0;
     }
     
     bool begin() {
@@ -93,6 +107,9 @@ public:
         config.screenSleepEnabled = doc["scr_sleep"] | false;
         config.brightness = doc["brightness"] | 100;
         config.updateIntervalMin = doc["update_min"] | 10;
+        config.clockStyle = doc["clock_style"] | 0;
+        config.startOnClock = doc["start_clock"] | false;
+        sanitize();
         
         Serial.println(F("[Config] Configuration loaded successfully"));
         printConfig();
@@ -100,6 +117,7 @@ public:
     }
     
     bool save() {
+        sanitize();
         StaticJsonDocument<1024> doc;
         
         doc["wifi_ssid"] = config.wifiSSID;
@@ -119,6 +137,8 @@ public:
         doc["scr_sleep"] = config.screenSleepEnabled;
         doc["brightness"] = config.brightness;
         doc["update_min"] = config.updateIntervalMin;
+        doc["clock_style"] = config.clockStyle;
+        doc["start_clock"] = config.startOnClock;
         
         File f = LittleFS.open(CONFIG_FILE, "w");
         if (!f) {
@@ -147,6 +167,7 @@ public:
             config.screenOnHour, config.screenOnMinute,
             config.screenOffHour, config.screenOffMinute);
         Serial.printf("  Update interval: %d min\n", config.updateIntervalMin);
+        Serial.printf("  Clock style: %d%s\n", config.clockStyle, config.startOnClock ? " (inicio en reloj)" : "");
         Serial.println(F("---"));
     }
 };
