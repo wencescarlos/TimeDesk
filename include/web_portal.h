@@ -8,8 +8,10 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <DNSServer.h>
+#include <ESP8266mDNS.h>
 #include "config.h"
 #include "config_manager.h"
+#include "github_updater.h"
 
 class WebPortal {
 public:
@@ -21,6 +23,9 @@ public:
     void handleClient();
     bool isAPMode();
     bool shouldRestart();
+    bool consumeShowClockRequest();   // true una vez si la web pidio mostrar el reloj
+    bool consumeUpdateCheckRequest(); // true una vez si la web pidio buscar actualizaciones
+    void setUpdater(GithubUpdater *u) { updater = u; }
     String getLocalIP();
     
 private:
@@ -29,6 +34,9 @@ private:
     ConfigManager *configMgr;
     bool apMode;
     bool restartRequested;
+    bool showClockRequested;
+    bool updateCheckRequested = false;
+    GithubUpdater *updater = nullptr;
     
     void setupRoutes();
     void handleRoot();
@@ -41,6 +49,11 @@ private:
     void handleUpdate();
     void handleUpdateUpload();
     void handleNotFound();
+    void handleClock();
+    void handleClockSave();
+    void handleAutoUpdateSave();
+    void handleUpdateCheck();
+    void handleUpdateInfo();
 
     String generateScheduleHTML();
     String generateUpdateHTML();

@@ -1,6 +1,6 @@
 /**
  * config.h - Configuración y constantes del proyecto
- * Estación Meteorológica ESP8266 con portal web
+ * TimeDesk - Reloj y estación meteorológica de escritorio (ESP8266)
  */
 #ifndef CONFIG_H
 #define CONFIG_H
@@ -19,9 +19,10 @@
 // =====================================================
 // CONSTANTES DEL SISTEMA
 // =====================================================
-#define WIFI_HOSTNAME       "Estacion-Meteo"
-#define AP_SSID             "EstacionMeteo-Config"
-#define AP_PASSWORD         "meteo1234"
+#define WIFI_HOSTNAME       "TimeDesk"
+#define MDNS_NAME           "timedesk"    // Portal accesible en http://timedesk.local
+#define AP_SSID             "TimeDesk-Config"
+#define AP_PASSWORD         "timedesk1234"
 #define CONFIG_FILE         "/config.json"
 #define CALIB_FILE          "/calibration.json"
 
@@ -31,6 +32,9 @@
 #define NTP_SERVERS           "pool.ntp.org"
 
 #define MAX_FORECASTS         12
+#define CLOCK_STYLE_MAX       6       // Numero de estilos de reloj (ver clock_styles.h)
+#define DEFAULT_UPDATE_REPO   "wencescarlos/TimeDesk"
+#define DEFAULT_UPDATE_HOUR   4       // 04:xx, con la pantalla normalmente apagada
 #define WEB_SERVER_PORT       80
 
 // =====================================================
@@ -97,6 +101,16 @@ struct AppConfig {
     
     // Intervalo actualización (minutos)
     uint16_t updateIntervalMin;
+    
+    // Estilo visual del reloj (ver clock_styles.h)
+    uint8_t clockStyle;
+    // Arrancar en la pantalla de reloj a pantalla completa
+    bool startOnClock;
+    
+    // Actualización automática desde GitHub Releases
+    bool autoUpdate;
+    char updateRepo[64];      // "usuario/repositorio"
+    uint8_t updateHour;       // hora local de la comprobación diaria
 };
 
 #endif

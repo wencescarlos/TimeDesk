@@ -36,6 +36,24 @@ public:
         config.screenSleepEnabled = false;
         config.brightness = 100;
         config.updateIntervalMin = 10;
+        config.clockStyle = 0;
+        config.startOnClock = false;
+        config.autoUpdate = true;
+        strlcpy(config.updateRepo, DEFAULT_UPDATE_REPO, sizeof(config.updateRepo));
+        config.updateHour = DEFAULT_UPDATE_HOUR;
+    }
+    
+    // Corrige valores fuera de rango (p.ej. un intervalo 0 provocaria
+    // descargas continuas de la API)
+    void sanitize() {
+        config.updateIntervalMin = constrain(config.updateIntervalMin, 5, 60);
+        config.brightness = constrain(config.brightness, 10, 100);
+        config.screenOnHour %= 24;
+        config.screenOffHour %= 24;
+        config.screenOnMinute %= 60;
+        config.screenOffMinute %= 60;
+        if (config.clockStyle >= CLOCK_STYLE_MAX) config.clockStyle = 0;
+        config.updateHour %= 24;
     }
     
     bool begin() {
@@ -58,7 +76,7 @@ public:
             return false;
         }
         
-        StaticJsonDocument<1024> doc;
+        StaticJsonDocument<1536> doc;
         DeserializationError err = deserializeJson(doc, f);
         f.close();
         
@@ -93,6 +111,12 @@ public:
         config.screenSleepEnabled = doc["scr_sleep"] | false;
         config.brightness = doc["brightness"] | 100;
         config.updateIntervalMin = doc["update_min"] | 10;
+        config.clockStyle = doc["clock_style"] | 0;
+        config.startOnClock = doc["start_clock"] | false;
+        config.autoUpdate = doc["auto_update"] | true;
+        strlcpy(config.updateRepo, doc["update_repo"] | DEFAULT_UPDATE_REPO, sizeof(config.updateRepo));
+        config.updateHour = doc["update_hour"] | DEFAULT_UPDATE_HOUR;
+        sanitize();
         
         Serial.println(F("[Config] Configuration loaded successfully"));
         printConfig();
@@ -100,7 +124,8 @@ public:
     }
     
     bool save() {
-        StaticJsonDocument<1024> doc;
+        sanitize();
+        StaticJsonDocument<1536> doc;
         
         doc["wifi_ssid"] = config.wifiSSID;
         doc["wifi_pass"] = config.wifiPassword;
@@ -119,6 +144,11 @@ public:
         doc["scr_sleep"] = config.screenSleepEnabled;
         doc["brightness"] = config.brightness;
         doc["update_min"] = config.updateIntervalMin;
+        doc["clock_style"] = config.clockStyle;
+        doc["start_clock"] = config.startOnClock;
+        doc["auto_update"] = config.autoUpdate;
+        doc["update_repo"] = config.updateRepo;
+        doc["update_hour"] = config.updateHour;
         
         File f = LittleFS.open(CONFIG_FILE, "w");
         if (!f) {
@@ -147,6 +177,7 @@ public:
             config.screenOnHour, config.screenOnMinute,
             config.screenOffHour, config.screenOffMinute);
         Serial.printf("  Update interval: %d min\n", config.updateIntervalMin);
+        Serial.printf("  Clock style: %d%s\n", config.clockStyle, config.startOnClock ? " (inicio en reloj)" : "");
         Serial.println(F("---"));
     }
 };

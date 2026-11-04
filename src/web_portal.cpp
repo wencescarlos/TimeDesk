@@ -1,8 +1,38 @@
 #include "web_portal.h"
 #include <Updater.h>
+#include "clock_page.h"
+#include "version.h"
+
+// Escapa texto para usarlo dentro de atributos value='...' del HTML
+static String htmlEscape(const char *in) {
+    String out;
+    for (const char *p = in; *p; p++) {
+        switch (*p) {
+            case '&':  out += F("&amp;"); break;
+            case '<':  out += F("&lt;"); break;
+            case '>':  out += F("&gt;"); break;
+            case '\'': out += F("&#39;"); break;
+            case '"':  out += F("&quot;"); break;
+            default:   out += *p;
+        }
+    }
+    return out;
+}
+
+// Escapa texto para cadenas JSON
+static String jsonEscape(const String &in) {
+    String out;
+    for (uint16_t i = 0; i < in.length(); i++) {
+        char c = in[i];
+        if (c == '"' || c == '\\') { out += '\\'; out += c; }
+        else if ((uint8_t)c < 0x20) out += ' ';
+        else out += c;
+    }
+    return out;
+}
 
 WebPortal::WebPortal(ConfigManager *cfgMgr) 
-    : server(WEB_SERVER_PORT), configMgr(cfgMgr), apMode(false), restartRequested(false) {}
+    : server(WEB_SERVER_PORT), configMgr(cfgMgr), apMode(false), restartRequested(false), showClockRequested(false) {}
 
 void WebPortal::beginAP() {
     apMode = true;
@@ -23,6 +53,14 @@ void WebPortal::beginSTA() {
     setupRoutes();
     server.begin();
     Serial.printf("[WebPortal] STA server on http://%s/\n", WiFi.localIP().toString().c_str());
+    
+    // mDNS: el portal también responde en http://timedesk.local
+    if (MDNS.begin(MDNS_NAME)) {
+        MDNS.addService("http", "tcp", WEB_SERVER_PORT);
+        Serial.printf("[WebPortal] mDNS activo: http://%s.local/\n", MDNS_NAME);
+    } else {
+        Serial.println(F("[WebPortal] No se pudo iniciar mDNS"));
+    }
 }
 
 void WebPortal::stop() {
@@ -36,12 +74,25 @@ void WebPortal::stop() {
 void WebPortal::handleClient() {
     if (apMode) {
         dnsServer.processNextRequest();
+    } else {
+        MDNS.update();
     }
     server.handleClient();
 }
 
 bool WebPortal::isAPMode() { return apMode; }
 bool WebPortal::shouldRestart() { return restartRequested; }
+bool WebPortal::consumeUpdateCheckRequest() {
+    bool r = updateCheckRequested;
+    updateCheckRequested = false;
+    return r;
+}
+
+bool WebPortal::consumeShowClockRequest() {
+    bool r = showClockRequested;
+    showClockRequested = false;
+    return r;
+}
 String WebPortal::getLocalIP() { return apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString(); }
 
 void WebPortal::setupRoutes() {
@@ -53,6 +104,11 @@ void WebPortal::setupRoutes() {
     server.on("/scan", HTTP_GET, [this]() { handleScanWifi(); });
     server.on("/reset", HTTP_POST, [this]() { handleReset(); });
     server.on("/update", HTTP_GET, [this]() { handleUpdate(); });
+    server.on("/clock", HTTP_GET, [this]() { handleClock(); });
+    server.on("/update-info", HTTP_GET, [this]() { handleUpdateInfo(); });
+    server.on("/update-check", HTTP_POST, [this]() { handleUpdateCheck(); });
+    server.on("/auto-update-save", HTTP_POST, [this]() { handleAutoUpdateSave(); });
+    server.on("/clock-save", HTTP_POST, [this]() { handleClockSave(); });
     server.on("/update", HTTP_POST,
         [this]() {
             server.sendHeader("Connection", "close");
@@ -79,7 +135,7 @@ void WebPortal::handleRoot() {
     server.sendContent(F(
         "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Estacion Meteorologica</title><style>"
+        "<title>TimeDesk</title><style>"
         "*{box-sizing:border-box;margin:0;padding:0}"
         "body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh}"
         ".header{background:linear-gradient(135deg,#16213e,#1a1a2e);padding:24px;text-align:center;"
@@ -118,7 +174,7 @@ void WebPortal::handleRoot() {
         "border-radius:8px;cursor:pointer;font-size:.9em;margin:8px 0}"
         ".time-inputs{display:flex;align-items:center;gap:6px}"
         ".time-inputs input{width:65px;text-align:center}"
-        ".nav-links{display:flex;gap:10px;justify-content:center;margin:16px 0}"
+        ".nav-links{display:flex;gap:10px;justify-content:center;margin:16px 0;flex-wrap:wrap}"
         ".nav-links a{color:#4cc9f0;text-decoration:none;padding:8px 16px;border:1px solid #4cc9f0;"
         "border-radius:8px;font-size:.9em;transition:all .2s}"
         ".nav-links a:hover{background:#4cc9f0;color:#000}"
@@ -126,11 +182,12 @@ void WebPortal::handleRoot() {
 
     // ── 2. Cabecera + navegación ─────────────────────────────────────────────
     server.sendContent(F(
-        "<div class='header'><h1>\xF0\x9F\x8C\xA4\xEF\xB8\x8F Estacion Meteorologica</h1>"
+        "<div class='header'><h1>&#128338; TimeDesk</h1>"
         "<p>Panel de Configuracion</p></div>"
         "<div class='container'>"
         "<div class='nav-links'>"
         "<a href='/'>&#127968; Inicio</a>"
+        "<a href='/clock'>&#127912; Reloj</a>"
         "<a href='/schedule'>&#9200; Horario</a>"
         "<a href='/status'>&#128202; Estado</a>"
         "<a href='/update'>&#128260; OTA</a>"
@@ -145,11 +202,11 @@ void WebPortal::handleRoot() {
             "<div id='wifiList' class='wifi-list'></div>"
             "<label>SSID de la red</label>"
             "<input type='text' name='ssid' id='ssid' value='");
-        s += configMgr->config.wifiSSID;
+        s += htmlEscape(configMgr->config.wifiSSID);
         s += F("' placeholder='Nombre de tu WiFi'>"
             "<label>Contrasena</label>"
             "<input type='password' name='pass' value='");
-        s += configMgr->config.wifiPassword;
+        s += htmlEscape(configMgr->config.wifiPassword);
         s += F("' placeholder='Contrasena WiFi'></div>");
         server.sendContent(s);
     }
@@ -160,14 +217,14 @@ void WebPortal::handleRoot() {
         s += F("<div class='card'><h2>&#127757; OpenWeatherMap</h2>"
             "<label>Clave API</label>"
             "<input type='text' name='api' value='");
-        s += configMgr->config.owmApiKey;
+        s += htmlEscape(configMgr->config.owmApiKey);
         s += F("' placeholder='Tu clave API de OpenWeatherMap'>"
             "<div class='row'><div><label>ID Ubicacion</label>"
             "<input type='text' name='locid' value='");
-        s += configMgr->config.owmLocationId;
+        s += htmlEscape(configMgr->config.owmLocationId);
         s += F("'></div><div><label>Nombre</label>"
             "<input type='text' name='locname' value='");
-        s += configMgr->config.locationName;
+        s += htmlEscape(configMgr->config.locationName);
         s += F("'></div></div><label>Idioma</label><select name='lang'>");
         server.sendContent(s);
     }
@@ -323,9 +380,11 @@ void WebPortal::handleStatus() {
     json += "\"heap\":" + String(ESP.getFreeHeap()) + ",";
     json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
     json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"mdns\":\"" MDNS_NAME ".local\",";
     json += "\"uptime\":" + String(millis() / 1000) + ",";
     json += "\"vcc\":" + String(ESP.getVcc() / 1024.0) + ",";
     json += "\"scr_on\":\"" + String(configMgr->config.screenOnHour) + ":" + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute) + "\",";
+    json += "\"clock_style\":" + String(configMgr->config.clockStyle) + ",";
     json += "\"scr_off\":\"" + String(configMgr->config.screenOffHour) + ":" + (configMgr->config.screenOffMinute < 10 ? "0" : "") + String(configMgr->config.screenOffMinute) + "\"";
     json += "}";
     server.send(200, "application/json", json);
@@ -392,6 +451,93 @@ void WebPortal::handleUpdateUpload() {
     }
 }
 
+void WebPortal::handleClock() {
+    // Pagina en flash enviada en dos trozos con el estado actual en medio
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    server.sendContent_P(CLOCK_PAGE_HEAD);
+    String state = "var CUR=" + String(configMgr->config.clockStyle) +
+                   ",START=" + String(configMgr->config.startOnClock ? 1 : 0) +
+                   ",BR=" + String(configMgr->config.brightness) + ";";
+    server.sendContent(state);
+    server.sendContent_P(CLOCK_PAGE_TAIL);
+}
+
+void WebPortal::handleClockSave() {
+    // Cambios en caliente: se guardan y se aplican sin reiniciar
+    AppConfig &c = configMgr->config;
+    if (server.hasArg("style")) {
+        long st = server.arg("style").toInt();
+        if (st < 0 || st >= CLOCK_STYLE_MAX) {
+            server.send(400, "application/json", F("{\"ok\":false,\"error\":\"estilo no valido\"}"));
+            return;
+        }
+        c.clockStyle = st;
+    }
+    if (server.hasArg("start_clock")) c.startOnClock = server.arg("start_clock").toInt() != 0;
+    if (server.hasArg("brightness")) c.brightness = constrain(server.arg("brightness").toInt(), 10, 100);
+    if (server.hasArg("show")) showClockRequested = true;
+    configMgr->save();
+
+    String json = "{\"ok\":true,\"style\":" + String(c.clockStyle) +
+                  ",\"start_clock\":" + String(c.startOnClock ? 1 : 0) +
+                  ",\"brightness\":" + String(c.brightness) + "}";
+    server.send(200, "application/json", json);
+}
+
+void WebPortal::handleUpdateInfo() {
+    AppConfig &c = configMgr->config;
+    String json = String(F("{\"installed\":\"")) + FIRMWARE_VERSION + "\"";
+    json += F(",\"auto\":");   json += c.autoUpdate ? "true" : "false";
+    json += F(",\"repo\":\"");  json += jsonEscape(c.updateRepo); json += "\"";
+    json += F(",\"hour\":");     json += String(c.updateHour);
+    json += F(",\"signed\":");   json += GithubUpdater::signingEnabled() ? "true" : "false";
+    if (updater) {
+        const GhUpdateStatus &st = updater->status();
+        json += F(",\"latest\":\"");      json += jsonEscape(st.latestVersion); json += "\"";
+        json += F(",\"result\":");         json += String((int)st.result);
+        json += F(",\"result_text\":\"");  json += GithubUpdater::resultText(st.result); json += "\"";
+        json += F(",\"message\":\"");     json += jsonEscape(st.message); json += "\"";
+        json += F(",\"last_check\":\"");
+        if (st.lastCheck) {
+            char buf[20];
+            strftime(buf, sizeof(buf), "%d/%m %H:%M", localtime(&st.lastCheck));
+            json += buf;
+        }
+        json += "\"";
+    }
+    json += "}";
+    server.send(200, "application/json", json);
+}
+
+void WebPortal::handleUpdateCheck() {
+    if (apMode || !updater) {
+        server.send(409, "application/json", F("{\"ok\":false,\"error\":\"Sin conexion a Internet\"}"));
+        return;
+    }
+    updateCheckRequested = true;   // se ejecuta en loop(), fuera del servidor web
+    server.send(200, "application/json", F("{\"ok\":true}"));
+}
+
+void WebPortal::handleAutoUpdateSave() {
+    AppConfig &c = configMgr->config;
+    if (server.hasArg("repo")) {
+        String repo = server.arg("repo");
+        repo.trim();
+        if (repo.startsWith("https://github.com/")) repo.remove(0, 19);   // admite la URL completa
+        if (repo.endsWith("/")) repo.remove(repo.length() - 1);
+        if (repo.length() == 0 || repo.length() >= sizeof(c.updateRepo) || repo.indexOf('/') < 1) {
+            server.send(400, "application/json", F("{\"ok\":false,\"error\":\"Usa el formato usuario/repositorio\"}"));
+            return;
+        }
+        strlcpy(c.updateRepo, repo.c_str(), sizeof(c.updateRepo));
+    }
+    if (server.hasArg("auto")) c.autoUpdate = server.arg("auto").toInt() != 0;
+    if (server.hasArg("hour")) c.updateHour = constrain(server.arg("hour").toInt(), 0, 23);
+    configMgr->save();
+    server.send(200, "application/json", F("{\"ok\":true}"));
+}
+
 void WebPortal::handleNotFound() {
     // Captive portal redirect
     if (apMode) {
@@ -407,7 +553,7 @@ String WebPortal::getWifiNetworks() {
     String json = "[";
     for (int i = 0; i < n; i++) {
         if (i > 0) json += ",";
-        json += "{\"ssid\":\"" + WiFi.SSID(i) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + 
+        json += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + 
                 ",\"enc\":" + String(WiFi.encryptionType(i) != ENC_TYPE_NONE ? 1 : 0) + "}";
     }
     json += "]";
@@ -440,7 +586,7 @@ String WebPortal::getTimezoneOptions() {
 String WebPortal::generateScheduleHTML() {
     String html = F("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Horario Pantalla</title>"
+        "<title>TimeDesk · Horario</title>"
         "<style>"
         "*{box-sizing:border-box;margin:0;padding:0}"
         "body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh;padding:20px}"
@@ -503,6 +649,7 @@ String WebPortal::generateScheduleHTML() {
     html += F("<button type='submit'>💾 Guardar Horario</button>"
         "</form>"
         "<a href='/'>← Inicio</a>"
+        "<a href='/clock'>🎨 Estilos de reloj</a>"
         "<a href='/update'>🔄 Actualización OTA</a>"
         "</div></body></html>");
     
@@ -512,7 +659,7 @@ String WebPortal::generateScheduleHTML() {
 String WebPortal::generateUpdateHTML() {
     String html = F("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>Actualización OTA</title>"
+        "<title>TimeDesk · Actualizaciones</title>"
         "<style>"
         "*{box-sizing:border-box;margin:0;padding:0}"
         "body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh}"
@@ -551,17 +698,75 @@ String WebPortal::generateUpdateHTML() {
         ".nav-links a:hover{background:#4cc9f0;color:#000}"
         "</style></head><body>");
 
-    html += F("<div class='header'><h1>🌤️ Estación Meteorológica</h1>"
-        "<p>Actualización de Firmware OTA</p></div>"
+    html += F("<div class='header'><h1>🕒 TimeDesk</h1>"
+        "<p>Actualizaciones de firmware</p></div>"
         "<div class='container'>"
         "<div class='nav-links'>"
         "<a href='/'>🏠 Inicio</a>"
+        "<a href='/clock'>🎨 Reloj</a>"
         "<a href='/schedule'>⏰ Horario</a>"
         "<a href='/status'>📊 Estado</a>"
         "<a href='/update'>🔄 OTA</a>"
+        "</div>");
+
+    // ── Actualización automática desde GitHub (rellena por JS con /update-info)
+    html += F("<style>"
+        ".gh-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:.92em;margin-bottom:12px}"
+        ".gh-grid span{color:#adb5bd}.gh-grid b{word-break:break-word}"
+        ".sw-row{display:flex;align-items:center;gap:10px;margin:10px 0}"
+        ".switch{position:relative;display:inline-block;width:48px;height:26px;flex:none}"
+        ".switch input{opacity:0;width:0;height:0}"
+        ".slider{position:absolute;cursor:pointer;inset:0;background:#333;border-radius:26px;transition:.3s}"
+        ".slider:before{position:absolute;content:'';height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}"
+        "input:checked+.slider{background:#4cc9f0}input:checked+.slider:before{transform:translateX(22px)}"
+        ".card label{display:block;color:#adb5bd;font-size:.9em;margin:10px 0 4px}"
+        ".card input[type=text],.card select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #333;"
+        "background:#16213e;color:#fff;font-size:1em}"
+        ".row2{display:flex;gap:10px}.row2>*{flex:1}"
+        ".btn2{background:#16213e;border:1px solid #4cc9f0;color:#4cc9f0}"
+        ".gh-msg{margin-top:12px;font-size:.92em;color:#adb5bd;min-height:1.2em}"
+        "</style>"
+        "<div class='card'><h2>☁️ Actualización automática (GitHub)</h2>"
+        "<div class='gh-grid'>"
+        "<span>Instalada</span><b id='gi'>…</b>"
+        "<span>Última en GitHub</span><b id='gl'>…</b>"
+        "<span>Último intento</span><b id='gr'>…</b>"
+        "<span>Verificación</span><b id='gs'>…</b>"
         "</div>"
-        "<div class='card'>"
-        "<h2>🔄 Actualizar Firmware</h2>"
+        "<div class='sw-row'><label class='switch'><input type='checkbox' id='ga'><span class='slider'></span></label>"
+        "<span>Buscar e instalar actualizaciones cada día</span></div>"
+        "<label for='grp'>Repositorio (usuario/nombre)</label>"
+        "<input type='text' id='grp' maxlength='63' placeholder='wencescarlos/TimeDesk'>"
+        "<label for='gh'>Hora de la comprobación diaria</label><select id='gh'></select>"
+        "<div class='row2'>"
+        "<button class='btn' onclick='ghSave()'>💾 Guardar</button>"
+        "<button class='btn btn2' id='gc' onclick='ghCheck()'>🔍 Buscar ahora</button>"
+        "</div><div class='gh-msg' id='gm'></div></div>"
+        "<script>"
+        "function $(i){return document.getElementById(i)}"
+        "for(var h=0;h<24;h++){var o=document.createElement('option');o.value=h;o.textContent=(h<10?'0':'')+h+':00 - '+(h<10?'0':'')+h+':59';$('gh').appendChild(o)}"
+        "function ghFill(d){$('gi').textContent='v'+d.installed;$('gl').textContent=d.latest?'v'+d.latest:'—';"
+        "$('gr').textContent=d.last_check?(d.result_text+' · '+d.last_check+(d.message?' · '+d.message:'')):'Nunca';"
+        "$('gs').innerHTML=d.signed?'&#9989; Firma RSA obligatoria':'&#9888;&#65039; Sin firma (ver README)';return d}"
+        "function ghLoad(first){return fetch('/update-info').then(function(r){return r.json()}).then(function(d){ghFill(d);"
+        "if(first){$('ga').checked=d.auto;$('grp').value=d.repo;$('gh').value=d.hour}return d})}"
+        "function ghPost(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b})"
+        ".then(function(r){return r.json()})}"
+        "function ghSave(){ghPost('/auto-update-save','auto='+($('ga').checked?1:0)+'&repo='+encodeURIComponent($('grp').value.trim())+'&hour='+$('gh').value)"
+        ".then(function(d){$('gm').textContent=d.ok?'Guardado ✔':'Error: '+d.error;ghLoad()}).catch(function(){$('gm').textContent='Error al guardar'})}"
+        "function ghCheck(){var t0=Date.now(),prev=null;$('gc').disabled=true;"
+        "$('gm').textContent='Comprobando… si hay una versión nueva se instalará y el dispositivo se reiniciará (1-2 min).';"
+        "ghLoad().then(function(d){prev=d.last_check}).catch(function(){}).then(function(){return ghPost('/update-check','')})"
+        ".then(function(){var iv=setInterval(function(){ghLoad().then(function(d){"
+        "if(d.last_check&&d.last_check!==prev){clearInterval(iv);$('gc').disabled=false;"
+        "$('gm').textContent='Resultado: '+d.result_text+(d.message?' — '+d.message:'')}"
+        "}).catch(function(){$('gm').textContent='Trabajando… el dispositivo no responde mientras comprueba o instala.';"
+        "if(Date.now()-t0>150000){clearInterval(iv);location.reload()}})},4000)})}"
+        "ghLoad(true).catch(function(){$('gm').textContent='No se pudo leer el estado'});"
+        "</script>");
+
+    html += F("<div class='card'>"
+        "<h2>🔄 Actualizar Firmware (manual)</h2>"
         "<div class='warn'>⚠️ <strong>No interrumpas la actualización.</strong> "
         "El dispositivo se reiniciará automáticamente al terminar.</div>"
         "<div class='info'>ℹ️ Sube el archivo <strong>firmware.bin</strong> generado por PlatformIO.<br>"
