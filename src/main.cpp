@@ -347,7 +347,7 @@ void setup() {
     screen = configManager.config.startOnClock ? SCR_CLOCK : SCR_MAIN;
     
     Serial.println(F("[Setup] Ready!"));
-    Serial.printf("[Setup] Web config: http://%s/\n", WiFi.localIP().toString().c_str());
+    Serial.printf("[Setup] Web config: http://%s/ o http://%s.local/\n", WiFi.localIP().toString().c_str(), MDNS_NAME);
 }
 
 // =====================================================
@@ -503,13 +503,14 @@ void drawSettingsScreen() {
     // Info de red y ubicación
     gfx.setFont(ArialMT_Plain_10);
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(10, 186, F("Config web:"));
+    gfx.drawString(10, 184, F("Web:"));
     gfx.setColor(MINI_YELLOW);
-    gfx.drawString(80, 186, "http://" + WiFi.localIP().toString());
+    gfx.drawString(42, 184, F("http://" MDNS_NAME ".local"));
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(10, 200, "WiFi: " + String(configManager.config.wifiSSID) + " (" + String(WiFi.RSSI()) + " dBm)");
-    gfx.drawString(10, 214, "Loc: " + String(configManager.config.locationName));
-    gfx.drawString(10, 228, "TZ: " + String(configManager.config.timezone));
+    gfx.drawString(10, 197, "IP: " + WiFi.localIP().toString());
+    gfx.drawString(10, 210, "WiFi: " + String(configManager.config.wifiSSID) + " (" + String(WiFi.RSSI()) + " dBm)");
+    gfx.drawString(10, 223, "Loc: " + String(configManager.config.locationName));
+    gfx.drawString(10, 236, "TZ: " + String(configManager.config.timezone));
     
     // Botones guardar / volver
     gfx.setFont(ArialRoundedMTBold_14);
@@ -973,7 +974,7 @@ void drawAbout() {
     gfx.setColor(MINI_YELLOW);
     gfx.drawString(10, 260, "Web: ");
     gfx.setColor(MINI_BLUE);
-    gfx.drawStringMaxWidth(40, 260, 200, "http://" + WiFi.localIP().toString());
+    gfx.drawStringMaxWidth(40, 260, 200, F("http://" MDNS_NAME ".local"));
     
     gfx.setColor(MINI_YELLOW);
     gfx.drawString(10, 280, "Update: ");

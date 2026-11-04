@@ -53,6 +53,14 @@ void WebPortal::beginSTA() {
     setupRoutes();
     server.begin();
     Serial.printf("[WebPortal] STA server on http://%s/\n", WiFi.localIP().toString().c_str());
+    
+    // mDNS: el portal también responde en http://timedesk.local
+    if (MDNS.begin(MDNS_NAME)) {
+        MDNS.addService("http", "tcp", WEB_SERVER_PORT);
+        Serial.printf("[WebPortal] mDNS activo: http://%s.local/\n", MDNS_NAME);
+    } else {
+        Serial.println(F("[WebPortal] No se pudo iniciar mDNS"));
+    }
 }
 
 void WebPortal::stop() {
@@ -66,6 +74,8 @@ void WebPortal::stop() {
 void WebPortal::handleClient() {
     if (apMode) {
         dnsServer.processNextRequest();
+    } else {
+        MDNS.update();
     }
     server.handleClient();
 }
@@ -370,6 +380,7 @@ void WebPortal::handleStatus() {
     json += "\"heap\":" + String(ESP.getFreeHeap()) + ",";
     json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
     json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"mdns\":\"" MDNS_NAME ".local\",";
     json += "\"uptime\":" + String(millis() / 1000) + ",";
     json += "\"vcc\":" + String(ESP.getVcc() / 1024.0) + ",";
     json += "\"scr_on\":\"" + String(configMgr->config.screenOnHour) + ":" + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute) + "\",";

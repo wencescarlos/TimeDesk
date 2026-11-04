@@ -20,6 +20,7 @@
 // CONSTANTES DEL SISTEMA
 // =====================================================
 #define WIFI_HOSTNAME       "TimeDesk"
+#define MDNS_NAME           "timedesk"    // Portal accesible en http://timedesk.local
 #define AP_SSID             "TimeDesk-Config"
 #define AP_PASSWORD         "timedesk1234"
 #define CONFIG_FILE         "/config.json"

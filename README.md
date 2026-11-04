@@ -72,7 +72,12 @@ Las librerías se descargan solas al compilar:
 
 ## Portal web
 
-Cuando el dispositivo está conectado a tu WiFi, el portal sigue disponible en `http://<IP>` (la IP aparece en la pantalla de Ajustes y en la de información).
+Cuando el dispositivo está conectado a tu WiFi, abre el portal desde cualquier equipo de tu red en:
+
+- **<http://timedesk.local>**, sin necesidad de conocer la IP.
+- `http://<IP>`, como alternativa. La IP aparece en las pantallas de Ajustes e Información.
+
+El nombre `timedesk.local` funciona en Windows 10/11, macOS, iOS, Linux (con Avahi) y Android 12 o posterior. En dispositivos más antiguos o en redes que bloquean mDNS (algunas WiFi de invitados), usa la IP. Si tienes más de un TimeDesk en la misma red, dale a cada uno un nombre distinto cambiando `MDNS_NAME` en `include/config.h`.
 
 | Ruta | Descripción |
 |------|-------------|
@@ -178,6 +183,7 @@ Constantes de `include/config.h`:
 | `MAX_FORECASTS` | `12` | Periodos de pronóstico descargados |
 | `WEB_SERVER_PORT` | `80` | Puerto del portal web |
 | `WIFI_HOSTNAME` | `TimeDesk` | Nombre con el que aparece en el router |
+| `MDNS_NAME` | `timedesk` | Nombre del portal en la red local (`http://timedesk.local`) |
 | `AP_SSID` | `TimeDesk-Config` | Nombre del punto de acceso de configuración |
 | `AP_PASSWORD` | `timedesk1234` | Contraseña del punto de acceso |
 | `DEFAULT_UPDATE_REPO` | `wencescarlos/TimeDesk` | Repositorio de las actualizaciones automáticas |
