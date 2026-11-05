@@ -11,8 +11,24 @@
 
 static const char USER_AGENT[] = "TimeDesk-ESP8266";
 
+// ¿Contiene el texto 'needle' (en RAM) al texto 'hay' guardado en flash?
+// Los datos PROGMEM solo pueden leerse con pgm_read_*: leerlos como RAM
+// (p.ej. pasarlos como primer argumento de strstr_P) provoca una excepción
+// y reinicia el ESP8266.
+static bool pgmContains(PGM_P hay, const char *needle) {
+    size_t n = strlen_P(hay), m = strlen(needle);
+    for (size_t i = 0; i + m <= n; i++) {
+        size_t j = 0;
+        while (j < m && (char)pgm_read_byte(hay + i + j) == needle[j]) j++;
+        if (j == m) return true;
+    }
+    return false;
+}
+
 bool GithubUpdater::signingEnabled() {
-    return strstr_P(OTA_PUBLIC_KEY, PSTR("BEGIN PUBLIC KEY")) != nullptr;
+    static int8_t cached = -1;   // la clave no cambia: se comprueba una vez
+    if (cached < 0) cached = pgmContains(OTA_PUBLIC_KEY, "BEGIN PUBLIC KEY") ? 1 : 0;
+    return cached == 1;
 }
 
 // Compara "1.2.10" con "1.10.0" numéricamente. Devuelve <0, 0 o >0.
@@ -60,8 +76,27 @@ static bool validVersion(const String &v) {
     return true;
 }
 
+// El día del último intento se guarda en la memoria RTC, que sobrevive a los
+// reinicios por software o por excepción: si un intento reiniciara el equipo,
+// no se repetiría en bucle durante la hora de comprobación.
+struct RtcCheckMark { uint32_t magic; int32_t yday; };
+static const uint32_t RTC_MAGIC = 0x54444B31;   // "TDK1"
+static const uint32_t RTC_OFFSET = 32;          // bloques de 4 bytes (lejos del inicio)
+
+static int rtcLoadYday() {
+    RtcCheckMark m;
+    if (ESP.rtcUserMemoryRead(RTC_OFFSET, (uint32_t *)&m, sizeof(m)) && m.magic == RTC_MAGIC) return m.yday;
+    return -1;
+}
+
+static void rtcSaveYday(int yday) {
+    RtcCheckMark m = {RTC_MAGIC, yday};
+    ESP.rtcUserMemoryWrite(RTC_OFFSET, (uint32_t *)&m, sizeof(m));
+}
+
 bool GithubUpdater::isDue(const AppConfig &cfg) {
     if (!cfg.autoUpdate) return false;
+    if (!rtcLoaded) { lastCheckYday = rtcLoadYday(); rtcLoaded = true; }
     time_t now = time(nullptr);
     if (now < NTP_MIN_VALID_EPOCH) return false;   // sin hora válida aún
     struct tm *t = localtime(&now);
@@ -70,6 +105,7 @@ bool GithubUpdater::isDue(const AppConfig &cfg) {
     if (t->tm_hour != cfg.updateHour || t->tm_min < minuteOffset) return false;
     if (t->tm_yday == lastCheckYday) return false;
     lastCheckYday = t->tm_yday;   // un único intento al día, aunque falle
+    rtcSaveYday(lastCheckYday);
     return true;
 }
 
