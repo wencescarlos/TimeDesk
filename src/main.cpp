@@ -45,6 +45,15 @@
 
 
 // =====================================================
+// TEXTOS EN ESPAÑOL (declarados en config.h)
+// =====================================================
+const String WDAY_NAMES[] = {"DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"};
+const String MONTH_NAMES[] = {"ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"};
+const String SUN_MOON_TEXT[] = {"Sol", "Salid", "Pues", "Luna", "Edad", "Ilumin"};
+const String MOON_PHASES[] = {"Luna Nueva", "Creciente Iluminante", "Cuarto Creciente", "Gibosa Iluminante",
+                              "Luna Llena", "Gibosa Menguante", "Cuarto Menguante", "Creciente Menguante"};
+
+// =====================================================
 // OBJETOS GLOBALES
 // =====================================================
 ADC_MODE(ADC_VCC);
@@ -627,7 +636,7 @@ void setBacklight(bool on) {
     current = level;
     analogWriteRange(100);
     if (level >= 100) digitalWrite(TFT_LED, HIGH);
-    else if (level <= 0) setBacklight(false);
+    else if (level <= 0) digitalWrite(TFT_LED, LOW);
     else analogWrite(TFT_LED, level);
 }
 
