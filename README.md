@@ -1,10 +1,10 @@
 # TimeDesk
 
-Reloj y estación meteorológica de escritorio para **ESP8266** con pantalla táctil a color. Muestra la hora con 6 estilos visuales, el tiempo actual, el pronóstico y la fase lunar, y se configura por completo desde el navegador. Se actualiza solo cada día desde GitHub.
+Reloj y estación meteorológica de escritorio para **ESP8266** con pantalla táctil a color. Muestra la hora con 20 estilos visuales, el tiempo actual, el pronóstico y la fase lunar, y se configura por completo desde el navegador. Se actualiza solo cada día desde GitHub.
 
 ## Características
 
-- **6 estilos de reloj** (Clásico, Retro, Anime, Arcade, Portátil y Futurista) que se cambian en caliente desde la web o desde la pantalla táctil.
+- **20 estilos de reloj** (relojes, ambientes, informática y electrónica, videojuegos) que se cambian en caliente desde la web o desde la pantalla táctil, con vistas previas reales.
 - **Tiempo y pronóstico** de OpenWeatherMap, con fases lunares y salida y puesta del sol.
 - **Portal web de configuración**: WiFi (con búsqueda de redes), API, ubicación, idioma, zona horaria, unidades, brillo e intervalo de actualización.
 - **Primer arranque sin cables**: crea su propio punto de acceso con portal cautivo.
@@ -83,6 +83,7 @@ El nombre `timedesk.local` funciona en Windows 10/11, macOS, iOS, Linux (con Ava
 |------|-------------|
 | `/` | Configuración completa |
 | `/clock` | Estilo del reloj, brillo y pantalla de inicio (sin reiniciar) |
+| `/clock-preview.bmp?s=N` | Captura del estilo N tal como se vería en la pantalla |
 | `/schedule` | Horario de encendido y apagado de la pantalla |
 | `/update` | Actualización automática desde GitHub y subida manual de firmware |
 | `/status` | Estado del dispositivo (JSON) |
@@ -92,25 +93,58 @@ El nombre `timedesk.local` funciona en Windows 10/11, macOS, iOS, Linux (con Ava
 
 ## Estilos de reloj
 
-En `http://<IP>/clock` aparece una vista previa animada de cada estilo; al pulsar uno se aplica al momento. También se cambia tocando la fila **Estilo reloj** en la pantalla de Ajustes.
+En `http://timedesk.local/clock` aparece una **vista previa real** de cada estilo: el propio dispositivo lo dibuja y lo envía como imagen, así que ves exactamente lo que mostrará la pantalla. Al pulsar uno se aplica al momento. También se cambia tocando la fila **Estilo reloj** en la pantalla de Ajustes.
 
-| Estilo | Colores | Pantalla de reloj completa |
-|--------|---------|----------------------------|
-| **Clásico** | Blanco, amarillo y azul | Hora grande, barra de segundos y tiempo actual |
-| **Retro** | Ámbar sobre negro | LCD de 7 segmentos con segmentos «fantasma», días de la semana y AM/PM |
-| **Anime** | Índigo, rosa y lavanda | Viñeta con líneas de velocidad, brillos, carita que parpadea y bocadillo con el tiempo |
-| **Arcade** | Negro, blanco, amarillo y rojo | Pixel art de 8 bits: «nivel» (día del año), vidas, barra de segundos y mascota que salta |
-| **Portátil** | 4 tonos de verde | Como Arcade, dentro del marco de una consola de bolsillo |
-| **Futurista** | Cian y magenta neón | Panel de datos con anillo de 60 marcas de segundos |
+**Relojes**
 
-Cada estilo cambia la paleta de toda la interfaz y el reloj de la cabecera de la pantalla principal. La pantalla trabaja con 4 colores (2 bits por píxel) para que el framebuffer quepa en la RAM del ESP8266. Todos los estilos se dibujan con primitivas, sin imágenes, así que no ocupan espacio extra.
+| Estilo | Pantalla de reloj completa |
+|--------|----------------------------|
+| **Clásico** | Hora grande, barra de segundos y tiempo actual |
+| **Analógico** | Esfera con números, agujas, segundero y ventanilla con el día |
+| **Retro** | LCD ámbar de 7 segmentos con segmentos «fantasma», días de la semana y AM/PM |
+| **Futurista** | Panel de datos cian y magenta con anillo de 60 marcas de segundos |
+| **Nixie** | Tubos de neón naranja con rejilla, zócalo y lámparas en los dos puntos |
+| **Flip clock** | Tarjetas abatibles; al cambiar el minuto se ve la hoja a medio caer |
+
+**Ambientes**
+
+| Estilo | Pantalla de reloj completa |
+|--------|----------------------------|
+| **Según el tiempo** | La escena y la paleta cambian con el tiempo real: sol, luna, nubes, lluvia, tormenta con rayos, nieve o niebla |
+| **Noche estrellada** | Estrellas que titilan, constelación, estrella fugaz y la luna con su fase real |
+| **Acuario** | Peces que nadan, algas que se mecen, burbujas y la hora dentro de una burbuja |
+| **Anime** | Viñeta con líneas de velocidad, brillos, carita que parpadea y bocadillo con el tiempo |
+
+**Informática y electrónica**
+
+| Estilo | Pantalla de reloj completa |
+|--------|----------------------------|
+| **Escritorio 1-bit** | Escritorio monocromo tramado con barra de menús y ventanas de título rayado |
+| **Escritorio 3D** | Ventana biselada con barra de progreso de bloques y barra de tareas con bandeja |
+| **Terminal** | Sesión de shell en fósforo verde (`date`, `uptime`, `weather`) con cursor parpadeante |
+| **Micro 8-bit** | Pantalla de BASIC de un microordenador doméstico con marco de color |
+| **Osciloscopio** | La hora trazada por el haz sobre la rejilla, onda viva, lecturas y mandos que giran |
+
+**Videojuegos**
+
+| Estilo | Pantalla de reloj completa |
+|--------|----------------------------|
+| **Arcade** | Pixel art 8-bit: «nivel» (día del año), vidas, barra de segundos y mascota que salta |
+| **Portátil** | Como Arcade, en 4 tonos de verde dentro del marco de una consola de bolsillo |
+| **Aventura** | Fantasía 16-bit: corazones de vida, oro, cofre que se abre y cuadro de diálogo con el tiempo |
+| **Velocidad** | Carreras arcade 16-bit: hora en cursiva, sol con franjas y carretera en perspectiva en movimiento |
+| **Plataformas** | Hora hecha de bloques, nubes, colinas y una mascota que recoge estrellas |
+
+Todos los estilos son diseños originales inspirados en épocas y géneros; no reproducen logotipos, personajes ni pantallas de productos concretos.
+
+Cada estilo cambia la paleta de toda la interfaz y el reloj de la cabecera de la pantalla principal. La pantalla trabaja con 4 colores (2 bits por píxel) para que el framebuffer quepa en la RAM del ESP8266. Todo se dibuja con primitivas, sin imágenes, así que no ocupa espacio extra.
 
 Para añadir un estilo nuevo:
 
-1. Añade una entrada a `ClockStyle` en `include/clock_styles.h` y su paleta en `PALETTES` (`src/clock_styles.cpp`).
+1. Añade una entrada a `ClockStyle` en `include/clock_styles.h`, y su paleta y su nombre en `PALETTES` y `STYLE_NAMES` (`src/clock_styles.cpp`).
 2. Escribe sus funciones `header*` y `full*` y añádelas a `clockDrawHeader` y `clockDrawFull`.
 3. Sube `CLOCK_STYLE_MAX` en `include/config.h`.
-4. Añade su vista previa en `include/clock_page.h`.
+4. Añade su nombre, descripción y grupo a las listas `S` y `G` de `include/clock_page.h`. La vista previa se genera sola.
 
 ## Uso en el dispositivo
 
@@ -203,6 +237,7 @@ TimeDesk/
 │   ├── web_portal.h          # Portal web
 │   ├── clock_styles.h        # API de los estilos de reloj
 │   ├── clock_page.h          # Página /clock (guardada en flash)
+│   ├── bmp_writer.h          # Imágenes BMP de las vistas previas
 │   ├── github_updater.h      # Actualización automática desde GitHub
 │   ├── ota_public_key.h      # Clave pública para verificar la firma (opcional)
 │   ├── TouchControllerWS.h   # Controlador y calibración del táctil

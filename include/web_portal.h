@@ -12,6 +12,7 @@
 #include "config.h"
 #include "config_manager.h"
 #include "github_updater.h"
+#include <functional>
 
 class WebPortal {
 public:
@@ -26,6 +27,15 @@ public:
     bool consumeShowClockRequest();   // true una vez si la web pidio mostrar el reloj
     bool consumeUpdateCheckRequest(); // true una vez si la web pidio buscar actualizaciones
     void setUpdater(GithubUpdater *u) { updater = u; }
+
+    // Vistas previas de /clock: render(estilo, paleta) dibuja el estilo en el
+    // framebuffer y rellena su paleta; pixel(x, y) lee el índice de color.
+    typedef std::function<void(uint8_t style, uint16_t *palette)> PreviewRenderFn;
+    typedef std::function<uint8_t(uint16_t x, uint16_t y)> PreviewPixelFn;
+    void setPreviewSource(PreviewRenderFn render, PreviewPixelFn pixel) {
+        previewRender = render;
+        previewPixel = pixel;
+    }
     String getLocalIP();
     
 private:
@@ -37,6 +47,8 @@ private:
     bool showClockRequested;
     bool updateCheckRequested = false;
     GithubUpdater *updater = nullptr;
+    PreviewRenderFn previewRender;
+    PreviewPixelFn previewPixel;
     
     void setupRoutes();
     void handleRoot();
@@ -51,6 +63,7 @@ private:
     void handleNotFound();
     void handleClock();
     void handleClockSave();
+    void handleClockPreview();
     void handleAutoUpdateSave();
     void handleUpdateCheck();
     void handleUpdateInfo();

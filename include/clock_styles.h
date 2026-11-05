@@ -23,6 +23,20 @@ enum ClockStyle : uint8_t {
     CLOCK_ARCADE   = 3,   // Videojuego arcade 8-bit (pixel art)
     CLOCK_HANDHELD = 4,   // Consola portatil de pantalla verde
     CLOCK_FUTURE   = 5,   // HUD de ciencia ficcion con anillo de segundos
+    CLOCK_ANALOG   = 6,   // Esfera con agujas
+    CLOCK_MONO     = 7,   // Escritorio monocromo de 1 bit (ordenadores de los 80)
+    CLOCK_DESKTOP  = 8,   // Escritorio con ventanas biseladas (sistemas de los 90)
+    CLOCK_TERMINAL = 9,   // Terminal de fosforo verde
+    CLOCK_MICRO    = 10,  // Microordenador domestico de 8 bits con BASIC
+    CLOCK_ADVENTURE= 11,  // Aventura de fantasia 16-bit
+    CLOCK_SPEED    = 12,  // Carreras arcade 16-bit
+    CLOCK_PLATFORM = 13,  // Plataformas 8-bit
+    CLOCK_WEATHER  = 14,  // Escena y colores segun el tiempo actual
+    CLOCK_NIGHT    = 15,  // Noche estrellada con la fase lunar real
+    CLOCK_AQUARIUM = 16,  // Acuario con peces y burbujas
+    CLOCK_SCOPE    = 17,  // Pantalla de osciloscopio
+    CLOCK_NIXIE    = 18,  // Tubos Nixie
+    CLOCK_FLIP     = 19,  // Reloj de tarjetas abatibles
     CLOCK_STYLE_COUNT
 };
 
@@ -31,7 +45,16 @@ struct ClockExtras {
     String temperature;   // p.ej. "21.5°C"
     String description;   // p.ej. "cielo claro"
     String location;      // p.ej. "Madrid"
+    uint32_t freeHeap = 0;   // bytes libres (estilos Terminal y Micro)
+    uint32_t uptimeSec = 0;  // segundos desde el arranque (estilo Terminal)
+    float moonIllumination = 0.5f;  // 0 = luna nueva, 1 = luna llena
+    bool moonWaxing = true;         // creciente (true) o menguante (false)
+    bool northernHemisphere = true; // invierte el lado iluminado en el sur
 };
+
+// Icono de OpenWeatherMap actual (p.ej. "10d"): decide la paleta y la escena
+// del estilo "Segun el tiempo". Llamar tras cada descarga del tiempo.
+void clockSetWeatherIcon(const String &icon);
 
 // Registra las fuentes ArialRounded (definidas en main.cpp)
 void clockSetFonts(const char *rounded14, const char *rounded36);
