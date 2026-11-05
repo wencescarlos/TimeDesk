@@ -198,8 +198,9 @@ const uint8_t MAX_HOPS = 6;
 // se para el de software y una interrupción del temporizador 1 alimenta el
 // de hardware cada 0,5 s, con un límite propio: pasados TLS_GUARD_S segundos
 // deja de alimentarlo y el watchdog reinicia el equipo igualmente.
-// (El temporizador 1 lo usa también el PWM del brillo: runBootUpdate deja la
-// pantalla sin PWM y al acabar el equipo se reinicia siempre.)
+// El temporizador 1 lo usa también el PWM del brillo, que lo deja como NMI:
+// solo se puede usar en un arranque en el que no se haya llamado a
+// analogWrite() (el de actualización: setup() aplica el brillo después).
 static const uint16_t TLS_GUARD_S = 40;
 static volatile uint16_t tlsGuardTicks = 0;
 

@@ -243,7 +243,6 @@ void setup() {
     // Estilo de reloj: fuentes + paleta del tema elegido
     clockSetFonts(ArialRoundedMTBold_14, ArialRoundedMTBold_36);
     clockApplyPalette(configManager.config.clockStyle, palette);
-    setBacklight(true);
     
     // Arranque dedicado a la actualización: se hace aquí, antes de cargar el
     // portal, el mDNS y los datos del tiempo, para tener toda la memoria libre
@@ -251,6 +250,10 @@ void setup() {
     if (GithubUpdater::takeBootUpdateRequest(updateRequestedAt)) {
         runBootUpdate(updateRequestedAt);   // termina siempre reiniciando
     }
+    // El brillo (PWM) se aplica después: el PWM deja el temporizador 1 como
+    // interrupción NMI y el arranque de actualización lo necesita libre para
+    // vigilar el saludo TLS (con PWM previo saltaba a una dirección inválida)
+    setBacklight(true);
     githubUpdater.loadStatus();   // resultado del último intento, para /update y /estado
     
     // Inicializar touch
@@ -640,7 +643,8 @@ void runBootUpdate(uint32_t requestedAt) {
     // CPU a 160 MHz: la criptografía del saludo TLS tarda la mitad. Al acabar
     // se reinicia siempre, así que el resto del firmware sigue a 80 MHz.
     system_update_cpu_freq(SYS_CPU_160MHZ);
-    // Brillo fijo (sin PWM): el temporizador 1 lo usa el guardián del saludo TLS
+    // Brillo al máximo sin PWM: en este arranque el PWM no se ha usado nunca y
+    // el temporizador 1 queda libre para el guardián del saludo TLS
     digitalWrite(TFT_LED, HIGH);
     // El panel conserva la imagen: se libera el framebuffer antes de nada
     gfx.freeBuffer();
