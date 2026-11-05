@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      direcciones:
+        description: 'Direcciones 0x... de /estado para traducir a función y línea (separadas por espacios)'
+        required: false
+        default: ''
 
 jobs:
   build:
@@ -54,3 +59,18 @@ jobs:
             echo "::error::La RAM fija ($RAM bytes) supera el límite de $RAM_LIMIT bytes: el dispositivo se quedaría sin memoria libre."
             exit 1
           fi
+
+      - name: Traducir direcciones de fallos
+        if: ${{ github.event.inputs.direcciones != '' }}
+        env:
+          DIRS: ${{ github.event.inputs.direcciones }}
+        run: |
+          BIN=~/.platformio/packages/toolchain-xtensa/bin
+          ELF=.pio/build/nodemcuv2/firmware.elf
+          ls -l .pio/build/nodemcuv2/firmware.bin
+          for a in $DIRS; do
+            echo "== $a"
+            $BIN/xtensa-lx106-elf-addr2line -pfiaC -e $ELF $a
+            # Contexto: símbolo que contiene la dirección
+            $BIN/xtensa-lx106-elf-nm -nC $ELF | awk -v A=$((a)) '{v=strtonum("0x"$1); if (v<=A) l=$0; else {print "   en: " l; exit}}'
+          done
