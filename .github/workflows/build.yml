@@ -1,0 +1,56 @@
+# Compila el firmware en cada Pull Request y comprueba que la RAM y la flash
+# no superan los límites seguros del ESP8266.
+name: Compilar
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # RAM fija máxima (bytes). Por encima, el portal y las descargas HTTPS
+      # se quedan sin memoria libre (la 1.3.0, con 50,2 KB, no aceptaba conexiones).
+      RAM_LIMIT: 43000
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('platformio.ini') }}
+
+      - name: Instalar PlatformIO
+        run: pip install platformio
+
+      - name: Compilar
+        run: pio run -e nodemcuv2 2>&1 | tee build.log
+
+      - name: Versiones usadas
+        run: |
+          grep -E "^PLATFORM:|^PACKAGES:|framework-|toolchain-" build.log | head -5
+          pio pkg list -e nodemcuv2
+
+      - name: Comprobar RAM y flash
+        run: |
+          RAM=$(grep -oP 'RAM:.*used \K[0-9]+' build.log)
+          FLASH=$(grep -oP 'Flash:.*used \K[0-9]+' build.log)
+          FLASH_MAX=$(grep -oP 'Flash:.*from \K[0-9]+' build.log)
+          {
+            echo "### Tamaño del firmware"
+            echo "| | Usado | Límite |"
+            echo "|---|---|---|"
+            echo "| RAM fija | $RAM bytes | $RAM_LIMIT bytes |"
+            echo "| Flash | $FLASH bytes | $FLASH_MAX bytes |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "RAM=$RAM FLASH=$FLASH/$FLASH_MAX"
+          if [ "$RAM" -gt "$RAM_LIMIT" ]; then
+            echo "::error::La RAM fija ($RAM bytes) supera el límite de $RAM_LIMIT bytes: el dispositivo se quedaría sin memoria libre."
+            exit 1
+          fi
