@@ -123,8 +123,11 @@ const size_t LINE_MAX = 1536;
 const uint32_t NET_TIMEOUT_MS = 15000;
 const uint8_t MAX_HOPS = 6;
 
+// La conexión TLS necesita un bloque de ~16,7 KB seguidos: se informa del
+// total libre y del mayor bloque, que es lo que decide si se puede conectar.
 String heapNote() {
-    return String(F(" (memoria ")) + String(ESP.getFreeHeap() / 1024) + F(" KB)");
+    return String(F(" (memoria ")) + String(ESP.getFreeHeap() / 1024) + F(" KB, bloque mayor ") +
+           String(ESP.getMaxFreeBlockSize() / 1024) + F(" KB)");
 }
 
 struct HttpsGet {
@@ -138,13 +141,14 @@ struct HttpsGet {
     uint8_t hop = 0;
     String error;
 
-    bool init() {
-        url = (char *)malloc(URL_MAX);
-        line = (char *)malloc(LINE_MAX);
+    // Los búferes los reserva GithubUpdater antes de liberar el framebuffer
+    bool init(char *urlBuf, char *lineBuf) {
+        url = urlBuf;
+        line = lineBuf;
         if (!url || !line) { error = String(F("Sin memoria para la descarga")) + heapNote(); return false; }
         return true;
     }
-    ~HttpsGet() { client.stop(); free(url); free(line); }
+    ~HttpsGet() { client.stop(); }
 
     // Lee una línea terminada en \n (sin \r). Si no cabe en el búfer se
     // guarda el principio y se marca 'truncated'. false si se agota el tiempo
@@ -274,7 +278,20 @@ struct HttpsGet {
 
 }  // namespace
 
+bool GithubUpdater::reserveBuffers() {
+    if (!urlBuf) urlBuf = (char *)malloc(URL_MAX);
+    if (!lineBuf) lineBuf = (char *)malloc(LINE_MAX);
+    return urlBuf && lineBuf;
+}
+
+void GithubUpdater::releaseBuffers() {
+    free(urlBuf);
+    free(lineBuf);
+    urlBuf = lineBuf = nullptr;
+}
+
 GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
+    reserveBuffers();   // por si no se llamó antes (lo ideal es antes de liberar la pantalla)
     st.lastCheck = time(nullptr);
     st.latestVersion = "";
 
@@ -293,7 +310,7 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     // ── 1. Versión publicada ────────────────────────────────────────────────
     {
         HttpsGet g;
-        if (!g.init() || !g.open(base + F("version.txt"))) {
+        if (!g.init(urlBuf, lineBuf) || !g.open(base + F("version.txt"))) {
             st.message = g.error;
             return st.result = GH_NETWORK_ERROR;
         }
@@ -342,7 +359,7 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     String error;
     {
         HttpsGet g;
-        if (!g.init() || !g.open(base + F("firmware.bin"))) {
+        if (!g.init(urlBuf, lineBuf) || !g.open(base + F("firmware.bin"))) {
             error = g.error;
         } else if (g.code != 200) {
             error = String(F("firmware.bin: HTTP ")) + g.code + F(" de ") + g.host;
