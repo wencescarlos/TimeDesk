@@ -39,6 +39,12 @@ public:
     // ¿Toca comprobar ahora? (una vez al día a la hora configurada)
     bool isDue(const AppConfig &cfg);
 
+    // Reserva los búferes de la descarga (~3 KB). Hay que llamarlo ANTES de
+    // liberar el framebuffer: así no ocupan el hueco de 19 KB que deja la
+    // pantalla, que la conexión TLS necesita entero (16,7 KB seguidos).
+    bool reserveBuffers();
+    void releaseBuffers();
+
     // Comprueba y, si hay versión nueva, instala. Si instala, reinicia el ESP.
     GhUpdateResult run(const AppConfig &cfg);
 
@@ -51,6 +57,8 @@ private:
     GhUpdateStatus st;
     int lastCheckYday = -1;
     bool rtcLoaded = false;   // la marca de la memoria RTC se lee una vez por arranque
+    char *urlBuf = nullptr;   // búferes de la descarga (ver reserveBuffers)
+    char *lineBuf = nullptr;
 };
 
 #endif

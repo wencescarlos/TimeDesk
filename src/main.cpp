@@ -609,9 +609,13 @@ void runGithubUpdate(bool manual) {
     gfx.drawString(120, 230, F("No lo desconectes."));
     gfx.commit();
     
-    // HTTPS necesita ~25KB de RAM: se libera el framebuffer (19KB) mientras dura
+    // HTTPS necesita ~25KB de RAM, con un bloque de 16,7KB seguidos. Primero se
+    // reservan los búferes de la descarga y DESPUÉS se libera el framebuffer
+    // (19KB): así su hueco queda entero para la conexión TLS.
+    githubUpdater.reserveBuffers();
     gfx.freeBuffer();
     GhUpdateResult r = githubUpdater.run(configManager.config);
+    githubUpdater.releaseBuffers();
     gfx.init();   // si se instaló la nueva versión, el ESP ya se habrá reiniciado
     
     if (manual || (r != GH_UP_TO_DATE && r != GH_NO_RELEASE)) {
