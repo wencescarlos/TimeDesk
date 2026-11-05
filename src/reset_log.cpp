@@ -116,3 +116,40 @@ uint32_t minFreeHeap() {
 }
 
 }  // namespace ResetLog
+
+// ── Pila del último fallo ────────────────────────────────────────────────
+// Memoria RTC de usuario: 32-35 marca diaria y petición de actualización,
+// 40-78 estado de la actualización, 80-104 esta pila.
+static const uint32_t CRASH_RTC_OFFSET = 80;
+static const uint32_t CRASH_MAGIC = 0x54444B43;   // "TDKC"
+
+static bool isCodeAddr(uint32_t v) {
+    return (v >= 0x40100000 && v < 0x40108000) ||   // IRAM
+           (v >= 0x40201000 && v < 0x40300000);     // flash
+}
+
+// La llama el core (core_esp8266_postmortem.cpp) antes de reiniciar tras una
+// excepción o un bloqueo, con la pila del programa principal.
+extern "C" void custom_crash_callback(struct rst_info *ri, uint32_t stack, uint32_t stack_end) {
+    ResetLog::CrashStack c;
+    memset(&c, 0, sizeof(c));
+    c.magic = CRASH_MAGIC;
+    c.reason = ri->reason;
+    c.epc1 = ri->epc1;
+    c.excvaddr = ri->excvaddr;
+    for (uint32_t p = stack & ~3u; p + 4 <= stack_end && c.count < ResetLog::CRASH_ADDRS; p += 4) {
+        uint32_t v = *(volatile uint32_t *)p;
+        if (isCodeAddr(v)) c.addr[c.count++] = v;
+    }
+    strncpy(c.version, FIRMWARE_VERSION, sizeof(c.version) - 1);
+    ESP.rtcUserMemoryWrite(CRASH_RTC_OFFSET, (uint32_t *)&c, sizeof(c));
+}
+
+namespace ResetLog {
+bool loadCrashStack(CrashStack &out) {
+    if (!ESP.rtcUserMemoryRead(CRASH_RTC_OFFSET, (uint32_t *)&out, sizeof(out))) return false;
+    if (out.magic != CRASH_MAGIC || out.count > CRASH_ADDRS) return false;
+    out.version[sizeof(out.version) - 1] = 0;
+    return true;
+}
+}
