@@ -48,6 +48,18 @@ public:
     // Comprueba y, si hay versión nueva, instala. Si instala, reinicia el ESP.
     GhUpdateResult run(const AppConfig &cfg);
 
+    // ── Actualización en un arranque dedicado ────────────────────────────
+    // La conexión TLS necesita ~27 KB y el firmware otros 4 KB: con el reloj
+    // en marcha (portal, mDNS, datos del tiempo, memoria fragmentada) no
+    // siempre caben. Por eso la comprobación se pide guardando una marca en
+    // la memoria RTC y reiniciando; al arrancar, antes de cargar nada más,
+    // se hace la comprobación con toda la memoria libre.
+    static void requestBootUpdate();                      // guarda la petición y reinicia
+    static bool takeBootUpdateRequest(uint32_t &requestedAt);   // la lee y la borra
+    void setCheckTime(uint32_t t) { checkTime = t; }      // hora de la petición (sin NTP al arrancar)
+    void saveStatus();                                    // resultado -> memoria RTC
+    void loadStatus();                                    // memoria RTC -> resultado
+
     const GhUpdateStatus &status() const { return st; }
     static bool signingEnabled();
     static int compareVersions(const String &a, const String &b);
@@ -59,6 +71,7 @@ private:
     bool rtcLoaded = false;   // la marca de la memoria RTC se lee una vez por arranque
     char *urlBuf = nullptr;   // búferes de la descarga (ver reserveBuffers)
     char *lineBuf = nullptr;
+    uint32_t checkTime = 0;
 };
 
 #endif

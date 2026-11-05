@@ -133,6 +133,7 @@ void drawSettingsScreen();
 void drawClockScreen();
 void setBacklight(bool on);
 void runGithubUpdate(bool manual);
+void runBootUpdate(uint32_t requestedAt);
 void renderClockPreview(uint8_t style, uint16_t *pal);
 void handleSettingsTouch(TS_Point p);
 void drawSeparator(uint16_t y);
@@ -240,6 +241,14 @@ void setup() {
     clockSetFonts(ArialRoundedMTBold_14, ArialRoundedMTBold_36);
     clockApplyPalette(configManager.config.clockStyle, palette);
     setBacklight(true);
+    
+    // Arranque dedicado a la actualización: se hace aquí, antes de cargar el
+    // portal, el mDNS y los datos del tiempo, para tener toda la memoria libre
+    uint32_t updateRequestedAt;
+    if (GithubUpdater::takeBootUpdateRequest(updateRequestedAt)) {
+        runBootUpdate(updateRequestedAt);   // termina siempre reiniciando
+    }
+    githubUpdater.loadStatus();   // resultado del último intento, para /update y /estado
     
     // Inicializar touch
     Serial.println(F("[Setup] Initializing touch..."));
@@ -596,35 +605,52 @@ void handleSettingsTouch(TS_Point p) {
 // PANTALLA DE RELOJ COMPLETA
 // =====================================================
 void runGithubUpdate(bool manual) {
-    // Mensaje fijo: el panel ILI9341 conserva la imagen aunque se libere el buffer
+    // La comprobación se hace en un arranque dedicado (ver runBootUpdate)
     gfx.fillBuffer(MINI_BLACK);
     gfx.setFont(ArialRoundedMTBold_14);
     gfx.setTextAlignment(TEXT_ALIGN_CENTER);
     gfx.setColor(MINI_YELLOW);
-    gfx.drawString(120, 120, F("Buscando actualizaciones"));
-    gfx.drawString(120, 140, F("en GitHub..."));
+    gfx.drawString(120, 140, F("Buscando actualizaciones"));
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(120, 180, F("Si hay una nueva version"));
-    gfx.drawString(120, 200, F("se instalara y reiniciara."));
-    gfx.drawString(120, 230, F("No lo desconectes."));
+    gfx.drawString(120, 170, F("Reiniciando..."));
     gfx.commit();
-    
-    // HTTPS necesita ~25KB de RAM, con un bloque de 16,7KB seguidos. Primero se
-    // reservan los búferes de la descarga y DESPUÉS se libera el framebuffer
-    // (19KB): así su hueco queda entero para la conexión TLS.
-    githubUpdater.reserveBuffers();
+    GithubUpdater::requestBootUpdate();   // no vuelve
+}
+
+void runBootUpdate(uint32_t requestedAt) {
+    gfx.fillBuffer(MINI_BLACK);
+    gfx.setFont(ArialRoundedMTBold_14);
+    gfx.setTextAlignment(TEXT_ALIGN_CENTER);
+    gfx.setColor(MINI_YELLOW);
+    gfx.drawString(120, 110, F("Buscando actualizaciones"));
+    gfx.drawString(120, 130, F("en GitHub..."));
+    gfx.setColor(MINI_WHITE);
+    gfx.drawString(120, 170, F("Si hay una nueva version"));
+    gfx.drawString(120, 190, F("se instalara y reiniciara."));
+    gfx.drawString(120, 220, F("No lo desconectes."));
+    gfx.commit();
+
+    // El panel conserva la imagen: se libera el framebuffer antes de nada
     gfx.freeBuffer();
-    GhUpdateResult r = githubUpdater.run(configManager.config);
-    githubUpdater.releaseBuffers();
-    gfx.init();   // si se instaló la nueva versión, el ESP ya se habrá reiniciado
-    
-    if (manual || (r != GH_UP_TO_DATE && r != GH_NO_RELEASE)) {
-        String msg = String(GithubUpdater::resultText(r));
-        if (githubUpdater.status().latestVersion.length()) msg += String(F(" (v")) + githubUpdater.status().latestVersion + ")";
-        drawProgress(100, msg);
-        delay(2500);
-    }
-    timerPress = millis();
+    Serial.printf_P(PSTR("[OTA-GH] Arranque de actualizacion (heap %u, bloque %u)\n"),
+                    ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
+
+    WiFi.mode(WIFI_STA);
+    WiFi.hostname(WIFI_HOSTNAME);
+    WiFi.begin(configManager.config.wifiSSID, configManager.config.wifiPassword);
+    for (uint8_t i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(500);
+
+    githubUpdater.setCheckTime(requestedAt);   // aún no hay hora NTP
+    GhUpdateResult r = githubUpdater.run(configManager.config);   // si instala, reinicia
+    githubUpdater.saveStatus();
+
+    // Resultado en pantalla y vuelta al funcionamiento normal
+    gfx.init();
+    String msg = String(GithubUpdater::resultText(r));
+    if (githubUpdater.status().latestVersion.length()) msg += String(F(" (v")) + githubUpdater.status().latestVersion + ")";
+    drawProgress(100, msg);
+    delay(2500);
+    ESP.restart();
 }
 
 ClockExtras buildClockExtras() {

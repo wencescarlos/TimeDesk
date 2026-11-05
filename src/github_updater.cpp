@@ -91,6 +91,60 @@ static void rtcSaveYday(int yday) {
     ESP.rtcUserMemoryWrite(RTC_OFFSET, (uint32_t *)&m, sizeof(m));
 }
 
+// ── Petición y resultado de la actualización en la memoria RTC ──────────────
+struct RtcUpdateRequest { uint32_t magic; uint32_t requestedAt; };
+static const uint32_t RTC_REQ_MAGIC = 0x54444B52;   // "TDKR"
+static const uint32_t RTC_REQ_OFFSET = 36;
+
+struct RtcUpdateStatus {
+    uint32_t magic;
+    uint32_t result;
+    uint32_t lastCheck;
+    char latest[16];
+    char message[96];
+};
+static const uint32_t RTC_ST_MAGIC = 0x54444B53;    // "TDKS"
+static const uint32_t RTC_ST_OFFSET = 40;           // 31 bloques: 40..70
+
+void GithubUpdater::requestBootUpdate() {
+    RtcUpdateRequest r = {RTC_REQ_MAGIC, (uint32_t)time(nullptr)};
+    ESP.rtcUserMemoryWrite(RTC_REQ_OFFSET, (uint32_t *)&r, sizeof(r));
+    Serial.println(F("[OTA-GH] Reiniciando para comprobar actualizaciones"));
+    delay(200);
+    ESP.restart();
+}
+
+bool GithubUpdater::takeBootUpdateRequest(uint32_t &requestedAt) {
+    RtcUpdateRequest r;
+    if (!ESP.rtcUserMemoryRead(RTC_REQ_OFFSET, (uint32_t *)&r, sizeof(r)) || r.magic != RTC_REQ_MAGIC) return false;
+    requestedAt = r.requestedAt;
+    RtcUpdateRequest none = {0, 0};             // se borra antes de empezar: nunca en bucle
+    ESP.rtcUserMemoryWrite(RTC_REQ_OFFSET, (uint32_t *)&none, sizeof(none));
+    return true;
+}
+
+void GithubUpdater::saveStatus() {
+    RtcUpdateStatus s;
+    memset(&s, 0, sizeof(s));
+    s.magic = RTC_ST_MAGIC;
+    s.result = st.result;
+    s.lastCheck = st.lastCheck;
+    strlcpy(s.latest, st.latestVersion.c_str(), sizeof(s.latest));
+    strlcpy(s.message, st.message.c_str(), sizeof(s.message));
+    ESP.rtcUserMemoryWrite(RTC_ST_OFFSET, (uint32_t *)&s, sizeof(s));
+}
+
+void GithubUpdater::loadStatus() {
+    RtcUpdateStatus s;
+    if (!ESP.rtcUserMemoryRead(RTC_ST_OFFSET, (uint32_t *)&s, sizeof(s)) || s.magic != RTC_ST_MAGIC) return;
+    s.latest[sizeof(s.latest) - 1] = 0;
+    s.message[sizeof(s.message) - 1] = 0;
+    st.result = (GhUpdateResult)s.result;
+    st.lastCheck = s.lastCheck;
+    st.latestVersion = s.latest;
+    st.message = s.message;
+}
+
 bool GithubUpdater::isDue(const AppConfig &cfg) {
     if (!cfg.autoUpdate) return false;
     if (!rtcLoaded) { lastCheckYday = rtcLoadYday(); rtcLoaded = true; }
@@ -292,7 +346,7 @@ void GithubUpdater::releaseBuffers() {
 
 GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     reserveBuffers();   // por si no se llamó antes (lo ideal es antes de liberar la pantalla)
-    st.lastCheck = time(nullptr);
+    st.lastCheck = checkTime ? checkTime : time(nullptr);
     st.latestVersion = "";
 
     if (!validRepo(cfg.updateRepo)) {
@@ -389,7 +443,9 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     Update.installSignature(nullptr, nullptr);   // la subida manual (/update) no exige firma
 
     if (error.length() == 0) {
-        st.message = F("Actualizado, reiniciando");
+        st.message = String(F("Actualizado a la version ")) + st.latestVersion;
+        st.result = GH_UPDATED;
+        saveStatus();                              // lo mostrará el firmware nuevo
         Serial.println(F("[OTA-GH] Actualizado. Reiniciando..."));
         delay(500);
         ESP.restart();
