@@ -81,8 +81,14 @@ var S=[
  ['Micro 8-bit','Microordenador doméstico con BASIC'],
  ['Aventura','Fantasía 16-bit con cofre y diálogo'],
  ['Velocidad','Carreras arcade 16-bit al atardecer'],
- ['Plataformas','Bloques, nubes y una mascota que salta']];
-var G=[['Relojes',[0,6,1,5]],['Informática retro',[7,8,9,10]],['Videojuegos',[3,4,11,12,13]],['Otros',[2]]];
+ ['Plataformas','Bloques, nubes y una mascota que salta'],
+ ['Según el tiempo','La escena y los colores cambian con el tiempo real'],
+ ['Noche estrellada','Constelaciones, estrella fugaz y la fase lunar real'],
+ ['Acuario','Peces, algas y la hora dentro de una burbuja'],
+ ['Osciloscopio','La hora trazada por el haz, con onda y lecturas'],
+ ['Nixie','Tubos de neón naranja con rejilla y zócalo'],
+ ['Flip clock','Tarjetas abatibles que caen al cambiar el minuto']];
+var G=[['Relojes',[0,6,19,18,1,5]],['Ambientes',[14,15,16,2]],['Informática y electrónica',[7,8,9,10,17]],['Videojuegos',[3,4,11,12,13]]];
 var cur=typeof CUR=='number'?CUR:0,cards={},queue=[],busy=false;
 function $(i){return document.getElementById(i)}
 function toast(m,e){var t=$('toast');t.textContent=m;t.className='show'+(e?' err':'');clearTimeout(t._h);t._h=setTimeout(function(){t.className=''},1800)}

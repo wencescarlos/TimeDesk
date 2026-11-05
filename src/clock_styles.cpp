@@ -38,20 +38,30 @@ static const uint16_t PALETTES[CLOCK_STYLE_COUNT][4] = {
     /* Aventura  */ {0x0180, 0xFFB9, 0xFDA0, 0xA145},   // bosque, pergamino, oro, rojo
     /* Velocidad */ {0x0008, 0xFFFF, 0xFFE0, 0xF81F},   // noche, blanco, amarillo, magenta
     /* Plataform.*/ {0x5D1F, 0xFFFF, 0xD340, 0x2444},   // cielo, blanco, ladrillo, verde
+    /* Tiempo    */ {0x3D7F, 0xFFFF, 0xFFE0, 0x1A7A},   // (cambia según el tiempo: WX_PALETTES)
+    /* Noche     */ {0x0004, 0xFFFF, 0xFFB4, 0x632F},   // azul noche, blanco, luna, gris azulado
+    /* Acuario   */ {0x0230, 0xFFFF, 0xFC40, 0x2D25},   // agua, blanco, pez naranja, alga
+    /* Oscilosc. */ {0x0080, 0x07E0, 0xAFF5, 0x0260},   // pantalla verde, haz, núcleo, rejilla
+    /* Nixie     */ {0x0000, 0xFD00, 0xFF9A, 0x4A29},   // negro, neón naranja, filamento, cristal
+    /* Flip      */ {0x2104, 0xFFFF, 0x4228, 0x0000},   // gris oscuro, blanco, tarjeta, negro
 };
 
 static const char *STYLE_NAMES[CLOCK_STYLE_COUNT] = {
     "Clasico", "Retro", "Anime", "Arcade", "Portatil", "Futurista",
-    "Analogico", "1-bit", "Escritorio", "Terminal", "Micro 8bit", "Aventura", "Velocidad", "Plataformas"
+    "Analogico", "1-bit", "Escritorio", "Terminal", "Micro 8bit", "Aventura", "Velocidad", "Plataformas",
+    "Tiempo", "Noche", "Acuario", "Osciloscopio", "Nixie", "Flip"
 };
 
 const char *clockStyleName(uint8_t style) {
     return STYLE_NAMES[style < CLOCK_STYLE_COUNT ? style : 0];
 }
 
+static const uint16_t *weatherPalette();   // definida con el estilo "Según el tiempo"
+
 void clockApplyPalette(uint8_t style, uint16_t *palette) {
     if (style >= CLOCK_STYLE_COUNT) style = CLOCK_CLASSIC;
-    for (uint8_t i = 0; i < 4; i++) palette[i] = PALETTES[style][i];
+    const uint16_t *src = (style == CLOCK_WEATHER) ? weatherPalette() : PALETTES[style];
+    for (uint8_t i = 0; i < 4; i++) palette[i] = src[i];
 }
 
 // Indices de color (mismo significado en todos los temas)
@@ -1358,6 +1368,702 @@ static void headerPlatform(MiniGrafx &g, const struct tm *t, const AppConfig &cf
 }
 
 // =====================================================
+// UTILIDADES: TRAZO GRUESO, ELIPSES Y FUENTE VECTORIAL
+// =====================================================
+
+// Pincel redondo de radio r, solo dentro de las filas [yMin, yMax]
+static void brush(MiniGrafx &g, int16_t x, int16_t y, uint8_t r, int16_t yMin, int16_t yMax) {
+    for (int16_t dy = -r; dy <= r; dy++) {
+        int16_t yy = y + dy;
+        if (yy < yMin || yy > yMax) continue;
+        int16_t hw = (int16_t)sqrtf((float)(r * r - dy * dy));
+        g.drawHorizontalLine(x - hw, yy, 2 * hw + 1);
+    }
+}
+
+static void thickLine(MiniGrafx &g, float x0, float y0, float x1, float y1, uint8_t r,
+                      int16_t yMin = 0, int16_t yMax = 319) {
+    float dx = x1 - x0, dy = y1 - y0;
+    int16_t steps = (int16_t)fmaxf(fabsf(dx), fabsf(dy));
+    if (steps < 1) steps = 1;
+    // Con pincel grueso no hace falta estampar en cada pixel
+    int16_t stride = r > 2 ? r / 2 : 1;
+    for (int16_t i = 0; i <= steps; i += stride)
+        brush(g, (int16_t)lroundf(x0 + dx * i / steps), (int16_t)lroundf(y0 + dy * i / steps), r, yMin, yMax);
+    brush(g, (int16_t)lroundf(x1), (int16_t)lroundf(y1), r, yMin, yMax);
+}
+
+static void fillEllipse(MiniGrafx &g, int16_t cx, int16_t cy, int16_t rx, int16_t ry) {
+    for (int16_t dy = -ry; dy <= ry; dy++) {
+        int16_t hw = (int16_t)(rx * sqrtf(1.0f - (float)(dy * dy) / (ry * ry)));
+        g.drawHorizontalLine(cx - hw, cy + dy, 2 * hw + 1);
+    }
+}
+
+// Dígitos de trazo continuo en una rejilla de 10x16 (255 = levantar el lápiz).
+// Sirven para los tubos Nixie (trazo fino con brillo) y las tarjetas abatibles
+// (trazo grueso). El 0 y el 8 se dibujan con elipses.
+static const uint8_t VDIGIT_1[] = {3,3, 6,0, 6,16};
+static const uint8_t VDIGIT_2[] = {1,4, 2,1, 5,0, 8,1, 9,4, 8,7, 1,16, 10,16};
+static const uint8_t VDIGIT_3[] = {1,2, 4,0, 8,1, 9,4, 7,7, 4,8, 255,255, 7,8, 9,11, 9,14, 6,16, 2,16, 0,14};
+static const uint8_t VDIGIT_4[] = {7,16, 7,0, 0,11, 10,11};
+static const uint8_t VDIGIT_5[] = {9,0, 2,0, 1,7, 5,6, 8,7, 9,10, 9,13, 6,16, 3,16, 0,14};
+static const uint8_t VDIGIT_6[] = {8,1, 5,0, 2,2, 1,6, 1,12, 3,16, 7,16, 9,13, 9,10, 7,7, 3,7, 1,9};
+static const uint8_t VDIGIT_7[] = {0,0, 10,0, 4,16};
+static const uint8_t VDIGIT_9[] = {2,15, 5,16, 8,14, 9,10, 9,4, 7,1, 4,0, 1,2, 1,6, 3,9, 7,9, 9,7};
+static const uint8_t *const VDIGITS[10] = {nullptr, VDIGIT_1, VDIGIT_2, VDIGIT_3, VDIGIT_4,
+                                           VDIGIT_5, VDIGIT_6, VDIGIT_7, nullptr, VDIGIT_9};
+static const uint8_t VDIGIT_LEN[10] = {0, sizeof(VDIGIT_1), sizeof(VDIGIT_2), sizeof(VDIGIT_3), sizeof(VDIGIT_4),
+                                       sizeof(VDIGIT_5), sizeof(VDIGIT_6), sizeof(VDIGIT_7), 0, sizeof(VDIGIT_9)};
+
+static void vEllipse(MiniGrafx &g, float cx, float cy, float rx, float ry, uint8_t r, int16_t yMin, int16_t yMax) {
+    const uint8_t N = 28;
+    float px = cx + rx, py = cy;
+    for (uint8_t i = 1; i <= N; i++) {
+        float a = i * 2 * PI / N;
+        float nx = cx + cosf(a) * rx, ny = cy + sinf(a) * ry;
+        thickLine(g, px, py, nx, ny, r, yMin, yMax);
+        px = nx; py = ny;
+    }
+}
+
+// Dibuja el dígito d (0-9; otro valor = nada) en la caja (x, y, w, h)
+static void drawVectorDigit(MiniGrafx &g, int8_t d, int16_t x, int16_t y, int16_t w, int16_t h,
+                            uint8_t r, int16_t yMin = 0, int16_t yMax = 319) {
+    if (d < 0 || d > 9) return;
+    float sx = w / 10.0f, sy = h / 16.0f;
+    if (d == 0) { vEllipse(g, x + 5 * sx, y + 8 * sy, 4.6f * sx, 8 * sy, r, yMin, yMax); return; }
+    if (d == 8) {
+        vEllipse(g, x + 5 * sx, y + 3.8f * sy, 3.8f * sx, 3.8f * sy, r, yMin, yMax);
+        vEllipse(g, x + 5 * sx, y + 11.6f * sy, 4.6f * sx, 4.4f * sy, r, yMin, yMax);
+        return;
+    }
+    const uint8_t *p = VDIGITS[d];
+    for (uint8_t i = 2; i + 1 < VDIGIT_LEN[d]; i += 2) {
+        if (p[i] == 255 || p[i - 2] == 255) continue;
+        thickLine(g, x + p[i - 2] * sx, y + p[i - 1] * sy, x + p[i] * sx, y + p[i + 1] * sy, r, yMin, yMax);
+    }
+}
+
+static int8_t digitAt(const char *s, uint8_t i) {
+    return (s[i] >= '0' && s[i] <= '9') ? s[i] - '0' : -1;
+}
+
+// Pseudoaleatorio determinista (posiciones fijas de estrellas, burbujas...)
+static uint16_t prand(uint16_t i, uint16_t salt) {
+    uint32_t v = (uint32_t)(i + 1) * 2654435761UL ^ (uint32_t)salt * 40503UL;
+    return (v >> 13) & 0xFFFF;
+}
+
+// =====================================================
+// ESTILO SEGUN EL TIEMPO
+// =====================================================
+enum WxKind : uint8_t { WX_CLEAR_DAY, WX_CLEAR_NIGHT, WX_CLOUDS, WX_RAIN, WX_STORM, WX_SNOW, WX_MIST };
+
+static const uint16_t WX_PALETTES[7][4] = {
+    {0x3D7F, 0xFFFF, 0xFFE0, 0x1A7A},   // despejado de dia: cielo, blanco, sol, azul oscuro
+    {0x0006, 0xFFFF, 0xFFB0, 0x4A6F},   // despejado de noche
+    {0x7D19, 0xFFFF, 0xCE59, 0x4A49},   // nubes
+    {0x31A8, 0xFFFF, 0x5D9F, 0x7BEF},   // lluvia
+    {0x1003, 0xFFFF, 0xFFE0, 0x6A6F},   // tormenta
+    {0x4A92, 0xFFFF, 0xBEFF, 0x8D1A},   // nieve
+    {0x5AEB, 0xFFFF, 0xBDF7, 0x8410},   // niebla
+};
+static char currentWxIcon[4] = "01d";
+
+void clockSetWeatherIcon(const String &icon) {
+    strlcpy(currentWxIcon, icon.length() >= 3 ? icon.c_str() : "01d", sizeof(currentWxIcon));
+}
+
+static WxKind weatherKind();
+static const uint16_t *weatherPalette() { return WX_PALETTES[weatherKind()]; }
+
+static WxKind weatherKind() {
+    int code = atoi(currentWxIcon);
+    bool night = currentWxIcon[2] == 'n';
+    switch (code) {
+        case 1: case 2: return night ? WX_CLEAR_NIGHT : WX_CLEAR_DAY;
+        case 3: case 4: return WX_CLOUDS;
+        case 9: case 10: return WX_RAIN;
+        case 11: return WX_STORM;
+        case 13: return WX_SNOW;
+        case 50: return WX_MIST;
+        default: return night ? WX_CLEAR_NIGHT : WX_CLEAR_DAY;
+    }
+}
+
+static void drawPuffCloud(MiniGrafx &g, int16_t x, int16_t y, uint8_t s, uint8_t body, uint8_t shade) {
+    g.setColor(shade);
+    fillEllipse(g, x + 2, y + 3, s * 2, s * 2 / 3 + 1);
+    g.setColor(body);
+    g.fillCircle(x - s, y, s * 2 / 3);
+    g.fillCircle(x, y - s / 2, s);
+    g.fillCircle(x + s, y, s * 3 / 4);
+    fillEllipse(g, x, y + 1, s * 2 - 2, s * 2 / 3);
+}
+
+// Escena del tiempo dentro de la caja (0, 0, 240, sceneH)
+static void drawWeatherScene(MiniGrafx &g, uint8_t s, int16_t sunX, int16_t sunY, uint8_t size, int16_t sceneH, bool full) {
+    WxKind k = weatherKind();
+    bool fewClouds = atoi(currentWxIcon) == 2;
+    if (k == WX_CLEAR_DAY) {
+        g.setColor(C_ACC);
+        g.fillCircle(sunX, sunY, size);
+        for (uint8_t i = 0; i < 12; i++) {   // rayos que giran despacio
+            float a = (i * 30 + s * 3) * DEG_TO_RAD;
+            thickLine(g, sunX + cosf(a) * (size + 5), sunY + sinf(a) * (size + 5),
+                      sunX + cosf(a) * (size + 5 + size / 2), sunY + sinf(a) * (size + 5 + size / 2), full ? 1 : 0);
+        }
+    } else if (k == WX_CLEAR_NIGHT) {
+        for (uint8_t i = 0; i < (full ? 40 : 12); i++) {
+            int16_t x = prand(i, 7) % 240, y = prand(i, 11) % sceneH;
+            g.setColor(((i + s) % 6) ? C_FG : C_SEC);
+            g.setPixel(x, y);
+            if (i % 5 == 0) { g.setPixel(x + 1, y); g.setPixel(x, y + 1); g.setPixel(x - 1, y); g.setPixel(x, y - 1); }
+        }
+        g.setColor(C_ACC);
+        g.fillCircle(sunX, sunY, size);
+        g.setColor(C_BG);
+        g.fillCircle(sunX + size / 2, sunY - size / 4, size * 9 / 10);
+    }
+    if (fewClouds || k == WX_CLOUDS || k == WX_RAIN || k == WX_STORM || k == WX_SNOW) {
+        uint8_t body = (k == WX_CLOUDS || fewClouds) ? C_FG : C_SEC;
+        uint8_t shade = (k == WX_CLOUDS) ? C_ACC : (fewClouds ? C_SEC : C_BG);
+        uint8_t cs = full ? 18 : 8;
+        int16_t drift = (s * 2) % 280;
+        drawPuffCloud(g, (40 + drift) % 280 - 20, full ? 50 : 18, cs, body, shade);
+        if (!fewClouds) {
+            drawPuffCloud(g, (170 + drift) % 280 - 20, full ? 34 : 12, cs * 4 / 5, body, shade);
+            if (full) drawPuffCloud(g, (110 + drift) % 280 - 20, 86, cs * 3 / 4, body, shade);
+        }
+    }
+    int16_t top = full ? 60 : 24, h = (full ? 320 : 56) - top;
+    if (k == WX_RAIN || k == WX_STORM) {
+        g.setColor(C_ACC);
+        for (uint8_t i = 0; i < (full ? 46 : 14); i++) {
+            int16_t x = prand(i, 3) % 250, y = top + (prand(i, 5) + s * 23) % h;
+            g.drawLine(x, y, x - 3, y + 8);
+        }
+    }
+    if (k == WX_STORM && (s % 6 == 0 || s % 6 == 1)) {   // rayo
+        g.setColor(C_ACC);
+        int16_t bx = full ? 150 : 200, by = full ? 70 : 20, sc = full ? 2 : 1;
+        int16_t pts[] = {0,0, -10,26, 2,26, -8,52, 14,18, 2,18, 10,0};
+        for (uint8_t i = 0; i < 6; i++)
+            thickLine(g, bx + pts[i * 2] * sc, by + pts[i * 2 + 1] * sc, bx + pts[i * 2 + 2] * sc, by + pts[i * 2 + 3] * sc, sc);
+    }
+    if (k == WX_SNOW) {
+        g.setColor(C_FG);
+        for (uint8_t i = 0; i < (full ? 40 : 12); i++) {
+            int16_t y = top + (prand(i, 9) + s * 6) % h;
+            int16_t x = prand(i, 13) % 240 + (int16_t)(sinf((y + i * 20) * 0.05f) * 6);
+            g.drawLine(x - 2, y, x + 2, y); g.drawLine(x, y - 2, x, y + 2);
+            g.setPixel(x - 1, y - 1); g.setPixel(x + 1, y + 1); g.setPixel(x + 1, y - 1); g.setPixel(x - 1, y + 1);
+        }
+    }
+    if (k == WX_MIST) {
+        for (uint8_t i = 0; i < (full ? 9 : 3); i++) {
+            int16_t y = (full ? 20 : 6) + i * (full ? 22 : 16);
+            int16_t off = ((s + i * 7) * 3) % 60;
+            g.setColor(i % 2 ? C_SEC : C_ACC);
+            for (int16_t x = -60 + off; x < 240; x += 70) g.fillRect(x, y, 46, full ? 4 : 2);
+        }
+    }
+}
+
+static void headerWeather(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    drawWeatherScene(g, t->tm_sec, 26, 24, 11, 56, false);
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_FG);
+    g.drawString(60, 1, shortDate(t));
+    g.setFont(fontRounded36);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    g.setColor(C_SEC); g.drawString(150, 14, buf);
+    g.setColor(C_FG);  g.drawString(148, 12, buf);
+}
+
+static void fullWeather(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    drawWeatherScene(g, t->tm_sec, 186, 50, 26, 120, true);
+
+    buildTimeString(buf, t, cfg, false);
+    drawSegString(g, buf, 123, 131, 38, 66, 9, 7, C_SEC, C_NONE, SEG_ROUND, true);   // sombra
+    drawSegString(g, buf, 120, 128, 38, 66, 9, 7, C_FG, C_NONE, SEG_ROUND, true);
+    g.setFont(fontRounded14);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_FG);
+    sprintf(buf, "%02d", t->tm_sec);
+    g.drawString(120, 200, shortDate(t) + "   :" + String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
+    g.setFont(fontRounded36);
+    g.setColor(C_SEC); g.drawString(122, 228, ex.temperature);
+    g.setColor(C_FG);  g.drawString(120, 226, ex.temperature);
+    g.setFont(fontRounded14);
+    g.drawString(120, 274, ex.description);
+    g.setFont(ArialMT_Plain_10);
+    g.drawString(120, 298, ex.location);
+}
+
+// =====================================================
+// ESTILO NOCHE ESTRELLADA (con la fase lunar real)
+// =====================================================
+// Luna con la parte iluminada según la fase (terminador elíptico por filas)
+static void drawMoonPhase(MiniGrafx &g, int16_t cx, int16_t cy, int16_t r, float illum, bool litRight) {
+    for (int16_t dy = -r; dy <= r; dy++) {
+        float w = sqrtf((float)(r * r - dy * dy));
+        float xt = w * (1.0f - 2.0f * illum);          // posición del terminador
+        int16_t a = litRight ? (int16_t)xt : (int16_t)-w;
+        int16_t b = litRight ? (int16_t)w : (int16_t)-xt;
+        g.setColor(C_SEC);                              // luz cenicienta
+        g.drawHorizontalLine(cx - (int16_t)w, cy + dy, 2 * (int16_t)w + 1);
+        if (b > a) { g.setColor(C_ACC); g.drawHorizontalLine(cx + a, cy + dy, b - a + 1); }
+    }
+}
+
+static void drawStars(MiniGrafx &g, uint8_t n, int16_t maxY, uint8_t s) {
+    for (uint8_t i = 0; i < n; i++) {
+        int16_t x = prand(i, 21) % 240, y = prand(i, 37) % maxY;
+        bool twinkleOff = (i + s) % 9 == 0;
+        g.setColor((i % 4 == 0 && !twinkleOff) ? C_FG : C_SEC);
+        g.setPixel(x, y);
+        if (i % 7 == 0 && !twinkleOff) { g.setPixel(x - 1, y); g.setPixel(x + 1, y); g.setPixel(x, y - 1); g.setPixel(x, y + 1); }
+    }
+}
+
+static void fullNight(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[32];
+    uint8_t s = t->tm_sec;
+    drawStars(g, 90, 270, s);
+
+    // Osa Mayor
+    static const int16_t DIPPER[7][2] = {{22,36}, {46,42}, {66,56}, {86,66}, {92,92}, {124,98}, {128,72}};
+    g.setColor(C_SEC);
+    for (uint8_t i = 0; i < 6; i++) g.drawLine(DIPPER[i][0], DIPPER[i][1], DIPPER[i + 1][0], DIPPER[i + 1][1]);
+    g.drawLine(DIPPER[3][0], DIPPER[3][1], DIPPER[6][0], DIPPER[6][1]);
+    g.setColor(C_FG);
+    for (uint8_t i = 0; i < 7; i++) { g.fillCircle(DIPPER[i][0], DIPPER[i][1], 1); }
+
+    // Estrella fugaz unos segundos de cada minuto
+    if (s >= 20 && s <= 22) {
+        int16_t x0 = 60 + (s - 20) * 40, y0 = 20 + (s - 20) * 12;
+        g.setColor(C_FG);  g.drawLine(x0, y0, x0 + 26, y0 + 8);
+        g.setColor(C_SEC); g.drawLine(x0 - 24, y0 - 7, x0, y0);
+    }
+
+    bool litRight = ex.moonWaxing == ex.northernHemisphere;
+    drawMoonPhase(g, 182, 72, 30, ex.moonIllumination, litRight);
+
+    buildTimeString(buf, t, cfg, false);
+    drawSegString(g, buf, 120, 140, 34, 60, 4, 6, C_FG, C_NONE, SEG_HEX, s % 2 == 0);
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_ACC);
+    sprintf(buf, "Luna %s %d%%", ex.moonWaxing ? "creciente" : "menguante", (int)lroundf(ex.moonIllumination * 100));
+    g.drawString(120, 210, buf);
+    g.setFont(fontRounded14);
+    g.setColor(C_FG);
+    g.drawString(120, 228, shortDate(t) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
+
+    // Colinas con pinos en silueta
+    g.setColor(C_SEC);
+    g.fillCircle(40, 380, 130);
+    g.fillCircle(210, 400, 140);
+    g.setColor(C_BG);
+    static const int16_t PINES[][3] = {{18,262,14}, {34,258,18}, {196,272,16}, {214,268,20}, {230,274,12}};
+    for (auto &p : PINES) {
+        g.fillTriangle(p[0], p[1] - p[2], p[0] - p[2] / 2, p[1] + 4, p[0] + p[2] / 2, p[1] + 4);
+        g.fillRect(p[0] - 1, p[1] + 4, 3, 5);
+    }
+    g.setFont(ArialMT_Plain_10);
+    g.setColor(C_FG);
+    g.drawString(120, 290, ex.temperature + "  " + ex.description);
+    g.drawString(120, 304, ex.location);
+}
+
+static void headerNight(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    drawStars(g, 30, 56, t->tm_sec);
+    drawMoonPhase(g, 22, 28, 15, 0.35f, true);
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_ACC);
+    g.drawString(48, 1, shortDate(t));
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    drawSegString(g, buf, 140, 16, cfg.isHHMM ? 28 : 20, 34, 3, 4, C_FG, C_NONE, SEG_HEX, true);
+}
+
+// =====================================================
+// ESTILO ACUARIO
+// =====================================================
+static void drawFish(MiniGrafx &g, int16_t x, int16_t y, int16_t size, bool right) {
+    int8_t d = right ? 1 : -1;
+    g.setColor(C_ACC);
+    fillEllipse(g, x, y, size, size * 3 / 5);
+    g.fillTriangle(x - d * size + d * 2, y, x - d * (size + size * 3 / 4), y - size / 2, x - d * (size + size * 3 / 4), y + size / 2);
+    g.fillTriangle(x - d * size / 3, y - size / 2, x + d * size / 4, y - size / 2, x - d * size / 2, y - size);   // aleta
+    g.setColor(C_FG);   // franjas y ojo
+    g.drawVerticalLine(x - d * size / 3, y - size / 2 + 1, size - 1);
+    g.drawVerticalLine(x - d * size / 3 + 1, y - size / 2 + 1, size - 1);
+    g.fillCircle(x + d * size * 3 / 5, y - size / 6, size > 12 ? 3 : 2);
+    g.setColor(C_BG);
+    g.setPixel(x + d * size * 3 / 5 + d, y - size / 6);
+}
+
+static void drawSeaweed(MiniGrafx &g, int16_t x, int16_t height, uint8_t s, uint8_t salt) {
+    g.setColor(C_SEC);
+    float px = x, py = 320;
+    for (int16_t y = 316; y > 320 - height; y -= 8) {
+        float nx = x + sinf(y * 0.07f + s * 0.6f + salt) * 6 * (320 - y) / height;
+        thickLine(g, px, py, nx, y, 2);
+        px = nx; py = y;
+    }
+}
+
+static void drawBubbles(MiniGrafx &g, uint8_t n, int16_t maxY, uint8_t s, uint8_t speed) {
+    g.setColor(C_FG);
+    for (uint8_t i = 0; i < n; i++) {
+        int16_t y = maxY - (prand(i, 17) + s * speed) % maxY;
+        int16_t x = prand(i, 29) % 230 + 5 + (int16_t)(sinf(y * 0.08f + i) * 3);
+        uint8_t r = 1 + i % 4;
+        g.drawCircle(x, y, r);
+        if (r > 2) g.setPixel(x - 1, y - 1);
+    }
+}
+
+static void fullAquarium(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    uint8_t s = t->tm_sec;
+
+    // Peces: van y vienen, ondulando
+    for (uint8_t i = 0; i < 4; i++) {
+        bool right = i % 2 == 0;
+        int16_t span = 320, pos = (s * 5 + i * 83) % span;
+        int16_t x = right ? pos - 40 : 280 - pos;
+        static const int16_t ROWS[4] = {34, 92, 190, 280};   // fuera de la franja del texto
+        int16_t y = ROWS[i] + (int16_t)(sinf(s * 0.5f + i) * 6);
+        drawFish(g, x, y, 10 + (i * 5) % 9, right);
+    }
+    drawSeaweed(g, 12, 150, s, 0);  drawSeaweed(g, 30, 110, s, 2);
+    drawSeaweed(g, 210, 130, s, 4); drawSeaweed(g, 228, 170, s, 1);
+
+    // Gran burbuja con la hora (tapa a los peces que pasan por detrás)
+    const int16_t bx = 120, by = 128, br = 74;
+    g.setColor(C_BG);
+    g.fillCircle(bx, by, br);
+    g.setColor(C_FG);
+    g.drawCircle(bx, by, br);
+    g.drawCircle(bx, by, br - 1);
+    for (int16_t a = 200; a < 250; a += 2) {   // brillo
+        float r = a * DEG_TO_RAD;
+        g.setPixel(bx + cosf(r) * (br - 10), by + sinf(r) * (br - 10));
+        g.setPixel(bx + cosf(r) * (br - 11), by + sinf(r) * (br - 11));
+    }
+    g.setFont(fontRounded36);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    buildTimeString(buf, t, cfg, false);
+    g.drawString(bx, by - 30, buf);
+    g.setFont(fontRounded14);
+    g.setColor(C_ACC);
+    sprintf(buf, "%02d", s);
+    g.drawString(bx, by + 14, String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? " PM" : " AM") : ""));
+    g.setFont(ArialMT_Plain_10);
+    g.setColor(C_FG);
+    g.drawString(bx, by + 36, shortDate(t));
+
+    drawBubbles(g, 18, 320, s, 9);
+
+    // Fondo con piedras
+    for (uint8_t i = 0; i < 14; i++) {
+        int16_t x = prand(i, 41) % 240, r = 4 + prand(i, 43) % 7;
+        g.setColor(i % 3 ? C_SEC : C_FG);
+        fillEllipse(g, x, 316, r + 4, r);
+    }
+    g.setFont(fontRounded14);
+    g.setColor(C_FG);
+    g.drawString(120, 222, ex.temperature + "  " + ex.location);
+    g.setFont(ArialMT_Plain_10);
+    g.drawString(120, 244, ex.description);
+}
+
+static void headerAquarium(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    uint8_t s = t->tm_sec;
+    drawBubbles(g, 8, 56, s, 3);
+    drawFish(g, 22 + (s % 4), 30, 9, true);
+    g.setFont(fontRounded36);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_FG);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    g.drawString(140, 12, buf);
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_ACC);
+    g.drawString(48, 1, shortDate(t));
+}
+
+// =====================================================
+// ESTILO OSCILOSCOPIO
+// =====================================================
+static void drawScopeGrid(MiniGrafx &g, int16_t x, int16_t y, int16_t w, int16_t h, uint8_t divX, uint8_t divY) {
+    g.setColor(C_SEC);
+    g.drawRect(x, y, w, h);
+    for (uint8_t i = 1; i < divX; i++)
+        for (int16_t yy = y + 2; yy < y + h; yy += 4) g.setPixel(x + i * w / divX, yy);
+    for (uint8_t j = 1; j < divY; j++)
+        for (int16_t xx = x + 2; xx < x + w; xx += 4) g.setPixel(xx, y + j * h / divY);
+    // Ejes centrales con marcas finas
+    int16_t cx = x + w / 2, cy = y + h / 2;
+    for (int16_t xx = x; xx < x + w; xx += w / divX / 5) g.drawVerticalLine(xx, cy - 2, 5);
+    for (int16_t yy = y; yy < y + h; yy += h / divY / 5) g.drawHorizontalLine(cx - 2, yy, 5);
+}
+
+static void drawWave(MiniGrafx &g, int16_t x, int16_t y, int16_t w, int16_t amp, float cycles, float phase) {
+    float py = y;
+    for (int16_t i = 0; i <= w; i += 2) {
+        float ny = y - sinf(i * 2 * PI * cycles / w + phase) * amp;
+        g.setColor(C_FG);
+        if (i) g.drawLine(x + i - 2, py, x + i, ny);
+        g.setColor(C_ACC);   // núcleo brillante del trazo
+        g.setPixel(x + i, ny);
+        py = ny;
+    }
+}
+
+static void fullScope(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[32];
+    uint8_t s = t->tm_sec;
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_ACC);
+    g.drawString(10, 3, "CH1  DC  2V/div");
+    g.setTextAlignment(TEXT_ALIGN_RIGHT);
+    g.drawString(230, 3, s % 2 ? "AUTO  TRIG'D" : "AUTO");
+
+    const int16_t gx = 10, gy = 18, gw = 220, gh = 200;
+    drawScopeGrid(g, gx, gy, gw, gh, 10, 8);
+
+    // La hora dibujada con el haz (trazo fino con halo)
+    buildTimeString(buf, t, cfg, false);
+    drawSegString(g, buf, 120, 40, 38, 70, 4, 7, C_FG, C_NONE, SEG_HEX, true);
+    drawSegString(g, buf, 120, 41, 38, 68, 1, 7, C_ACC, C_NONE, SEG_HEX, true);
+
+    // Onda viva: la frecuencia sube con los segundos
+    drawWave(g, gx + 2, gy + 160, gw - 4, 22, 1.5f + s / 12.0f, s * 0.6f);
+
+    // Lecturas de medida
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_FG);
+    sprintf(buf, "Freq %2d.%d Hz", 1 + s / 12, (s % 12) * 10 / 12);
+    g.drawString(10, 224, buf);
+    sprintf(buf, "Vpp %02d.%02d V", (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
+    g.drawString(10, 238, buf);
+    sprintf(buf, "Seg %02d", s);
+    g.setTextAlignment(TEXT_ALIGN_RIGHT);
+    g.drawString(230, 224, buf);
+    g.drawString(230, 238, shortDate(t));
+
+    // Mandos que giran
+    for (uint8_t i = 0; i < 3; i++) {
+        int16_t kx = 34 + i * 40, ky = 280;
+        g.setColor(C_SEC);
+        g.drawCircle(kx, ky, 13);
+        g.drawCircle(kx, ky, 12);
+        float a = ((s * (i + 2) * 6) % 360 - 90) * DEG_TO_RAD;
+        g.setColor(C_ACC);
+        g.drawLine(kx, ky, kx + cosf(a) * 11, ky + sinf(a) * 11);
+    }
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_SEC);
+    g.drawString(34, 298, "VOLTS");
+    g.drawString(74, 298, "TIME");
+    g.drawString(114, 298, "POS");
+    g.setColor(C_FG);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.drawString(144, 262, ex.temperature);
+    g.drawStringMaxWidth(144, 276, 92, ex.description);
+}
+
+static void headerScope(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    drawScopeGrid(g, 0, 0, 240, 54, 10, 2);
+    drawWave(g, 2, 46, 236, 4, 3, t->tm_sec * 0.6f);
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    drawSegString(g, buf, 120, 6, cfg.isHHMM ? 26 : 20, 32, 3, 5, C_FG, C_NONE, SEG_HEX, true);
+}
+
+// =====================================================
+// ESTILO NIXIE
+// =====================================================
+static void drawNixieTube(MiniGrafx &g, int16_t x, int16_t y, int16_t w, int16_t h, int8_t digit, uint8_t glowR) {
+    // Rejilla (malla del ánodo) y cristal
+    g.setColor(C_SEC);
+    for (int16_t xx = x + 5; xx < x + w - 4; xx += 3)
+        for (int16_t yy = y + 10; yy < y + h - 12; yy += 3) g.setPixel(xx, yy);
+    g.drawRect(x + 2, y + 6, w - 4, h - 14);
+    g.fillCircle(x + w / 2, y + 6, 6);           // remate superior
+    g.setColor(C_BG);
+    g.fillRect(x + w / 2 - 6, y + 7, 13, 6);
+    g.setColor(C_SEC);
+    g.drawHorizontalLine(x + w / 2 - 6, y + 6, 13);
+    g.fillRect(x, y + h - 8, w, 8);               // zócalo
+    g.setColor(C_BG);
+    for (int16_t px = x + 4; px < x + w - 2; px += 6) g.fillRect(px, y + h - 3, 2, 3);
+    // Dígito: halo naranja + filamento brillante
+    int16_t dw = (w - 16), dh = (h - 30);
+    g.setColor(C_FG);
+    drawVectorDigit(g, digit, x + 8, y + 14, dw, dh, glowR);
+    g.setColor(C_ACC);
+    drawVectorDigit(g, digit, x + 8, y + 14, dw, dh, glowR > 2 ? 1 : 0);
+    g.setColor(C_SEC);   // reflejo en el cristal
+    g.drawVerticalLine(x + 5, y + 14, h / 3);
+}
+
+static void fullNixie(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char buf[24];
+    buildTimeString(buf, t, cfg, true);   // "HH:MM:SS"
+    const int16_t tw = 50, th = 150, y = 60;
+    int16_t xs[4] = {6, 60, 126, 180};
+    uint8_t idx[4] = {0, 1, 3, 4};
+    for (uint8_t i = 0; i < 4; i++) drawNixieTube(g, xs[i], y, tw, th, digitAt(buf, idx[i]), 3);
+    // Lámparas de neón de los dos puntos
+    g.setColor(t->tm_sec % 2 ? C_SEC : C_FG);
+    g.fillCircle(120, y + 52, 4);
+    g.fillCircle(120, y + 96, 4);
+
+    // Segundos en tubos pequeños
+    drawNixieTube(g, 86, 222, 32, 70, digitAt(buf, 6), 2);
+    drawNixieTube(g, 122, 222, 32, 70, digitAt(buf, 7), 2);
+
+    g.setFont(fontRounded14);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_FG);
+    g.drawString(120, 20, shortDate(t) + " " + String(1900 + t->tm_year) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
+    g.setFont(ArialMT_Plain_10);
+    g.setColor(C_SEC);
+    g.drawString(120, 300, ex.temperature + "  " + ex.description);
+}
+
+static void headerNixie(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    buildTimeString(buf, t, cfg, !cfg.isHHMM);
+    uint8_t n = strlen(buf);
+    int16_t dw = 20, gap = 6, cw = 10, total = 0;
+    for (uint8_t i = 0; i < n; i++) total += (buf[i] == ':' ? cw : dw) + gap;
+    int16_t x = 120 - total / 2;
+    for (uint8_t i = 0; i < n; i++) {
+        if (buf[i] == ':') {
+            g.setColor(C_FG);
+            g.fillCircle(x + cw / 2, 22, 2); g.fillCircle(x + cw / 2, 40, 2);
+            x += cw + gap;
+            continue;
+        }
+        g.setColor(C_SEC);
+        g.drawRect(x - 3, 6, dw + 6, 48);
+        g.setColor(C_FG);  drawVectorDigit(g, digitAt(buf, i), x, 12, dw, 38, 2);
+        g.setColor(C_ACC); drawVectorDigit(g, digitAt(buf, i), x, 12, dw, 38, 0);
+        x += dw + gap;
+    }
+}
+
+// =====================================================
+// ESTILO FLIP CLOCK (tarjetas abatibles)
+// =====================================================
+// Tarjeta con dos dígitos. Si "oldDigits" no es nulo, se dibuja la tarjeta
+// a medio abatir: arriba los dígitos nuevos y abajo los anteriores.
+static void drawFlipCard(MiniGrafx &g, int16_t x, int16_t y, int16_t w, int16_t h,
+                         const int8_t digits[2], const int8_t *oldDigits, uint8_t stroke) {
+    int16_t mid = y + h / 2;
+    g.setColor(C_SEC);
+    fillRoundRect(g, x + 2, y + 3, w, h, 8);          // sombra
+    g.setColor(C_ACC);
+    fillRoundRect(g, x, y, w, h, 8);
+    int16_t dw = (w - 24) / 2, dh = h - 24;
+    for (uint8_t half = 0; half < 2; half++) {
+        const int8_t *d = (half == 1 && oldDigits) ? oldDigits : digits;
+        int16_t yMin = half == 0 ? y : mid + 1, yMax = half == 0 ? mid - 1 : y + h;
+        g.setColor(C_FG);
+        drawVectorDigit(g, d[0], x + 8, y + 12, dw, dh, stroke, yMin, yMax);
+        drawVectorDigit(g, d[1], x + 16 + dw, y + 12, dw, dh, stroke, yMin, yMax);
+    }
+    // Línea de corte y bisagras
+    g.setColor(C_SEC);
+    g.fillRect(x, mid - 1, w, 3);
+    g.setColor(C_BG);
+    g.fillRect(x - 1, mid - 4, 4, 9);
+    g.fillRect(x + w - 3, mid - 4, 4, 9);
+    if (oldDigits) {   // brillo en el borde de la hoja que cae
+        g.setColor(C_SEC);
+        g.drawHorizontalLine(x + 6, mid + 4, w - 12);
+    }
+}
+
+static void splitDigits(const char *s, uint8_t i, int8_t out[2]) {
+    out[0] = digitAt(s, i);
+    out[1] = digitAt(s, i + 1);
+}
+
+static void fullFlip(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, const ClockExtras &ex) {
+    char now[24], prev[24];
+    buildTimeString(now, t, cfg, true);
+    struct tm cur = *t, tp;              // copia: localtime() reutiliza un buffer estático
+    time_t before = mktime(&cur) - 1;
+    localtime_r(&before, &tp);
+    buildTimeString(prev, &tp, cfg, true);
+
+    int8_t hh[2], mm[2], ss[2], ohh[2], omm[2];
+    splitDigits(now, 0, hh); splitDigits(now, 3, mm); splitDigits(now, 6, ss);
+    splitDigits(prev, 0, ohh); splitDigits(prev, 3, omm);
+    // Durante el primer segundo de cada cambio, la tarjeta se ve a medio abatir
+    bool flipH = hh[0] != ohh[0] || hh[1] != ohh[1];
+    bool flipM = mm[0] != omm[0] || mm[1] != omm[1];
+
+    g.setFont(fontRounded14);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_FG);
+    g.drawString(120, 24, shortDate(t) + " " + String(1900 + t->tm_year));
+
+    drawFlipCard(g, 8, 60, 108, 136, hh, flipH ? ohh : nullptr, 5);
+    drawFlipCard(g, 124, 60, 108, 136, mm, flipM ? omm : nullptr, 5);
+    if (cfg.is12hStyle) {
+        g.setFont(ArialMT_Plain_10);
+        g.setTextAlignment(TEXT_ALIGN_LEFT);
+        g.setColor(C_FG);
+        g.drawString(16, 182, t->tm_hour >= 12 ? "PM" : "AM");
+    }
+    drawFlipCard(g, 84, 210, 72, 56, ss, nullptr, 2);
+
+    g.setFont(fontRounded14);
+    g.setTextAlignment(TEXT_ALIGN_CENTER);
+    g.setColor(C_FG);
+    g.drawString(120, 276, ex.temperature + "  " + ex.location);
+    g.setFont(ArialMT_Plain_10);
+    g.drawString(120, 298, ex.description);
+}
+
+static void headerFlip(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
+    char buf[24];
+    buildTimeString(buf, t, cfg, true);
+    int8_t hh[2], mm[2];
+    splitDigits(buf, 0, hh); splitDigits(buf, 3, mm);
+    drawFlipCard(g, 48, 2, 66, 52, hh, nullptr, 2);
+    drawFlipCard(g, 122, 2, 66, 52, mm, nullptr, 2);
+    if (!cfg.isHHMM) {
+        g.setFont(fontRounded14);
+        g.setTextAlignment(TEXT_ALIGN_CENTER);
+        g.setColor(C_FG);
+        g.drawString(212, 34, String(buf + 6));
+    }
+    g.setFont(ArialMT_Plain_10);
+    g.setTextAlignment(TEXT_ALIGN_LEFT);
+    g.setColor(C_FG);
+    g.drawString(4, 4, WDAY_NAMES[t->tm_wday]);
+    g.drawString(4, 18, String(t->tm_mday));
+    if (cfg.is12hStyle) g.drawString(4, 32, t->tm_hour >= 12 ? "PM" : "AM");
+}
+
+// =====================================================
 // API PUBLICA
 // =====================================================
 void clockDrawHeader(MiniGrafx &gfx, const struct tm *t, const AppConfig &cfg) {
@@ -1376,6 +2082,12 @@ void clockDrawHeader(MiniGrafx &gfx, const struct tm *t, const AppConfig &cfg) {
         case CLOCK_ADVENTURE:headerAdventure(gfx, t, cfg); break;
         case CLOCK_SPEED:    headerSpeed(gfx, t, cfg); break;
         case CLOCK_PLATFORM: headerPlatform(gfx, t, cfg); break;
+        case CLOCK_WEATHER:  headerWeather(gfx, t, cfg); break;
+        case CLOCK_NIGHT:    headerNight(gfx, t, cfg); break;
+        case CLOCK_AQUARIUM: headerAquarium(gfx, t, cfg); break;
+        case CLOCK_SCOPE:    headerScope(gfx, t, cfg); break;
+        case CLOCK_NIXIE:    headerNixie(gfx, t, cfg); break;
+        case CLOCK_FLIP:     headerFlip(gfx, t, cfg); break;
         default:             headerClassic(gfx, t, cfg); break;
     }
     gfx.setTransparentColor(C_BG);   // los iconos del tiempo usan el fondo como transparente
@@ -1397,6 +2109,12 @@ void clockDrawFull(MiniGrafx &gfx, const struct tm *t, const AppConfig &cfg, con
         case CLOCK_ADVENTURE:fullAdventure(gfx, t, cfg, extras); break;
         case CLOCK_SPEED:    fullSpeed(gfx, t, cfg, extras); break;
         case CLOCK_PLATFORM: fullPlatform(gfx, t, cfg, extras); break;
+        case CLOCK_WEATHER:  fullWeather(gfx, t, cfg, extras); break;
+        case CLOCK_NIGHT:    fullNight(gfx, t, cfg, extras); break;
+        case CLOCK_AQUARIUM: fullAquarium(gfx, t, cfg, extras); break;
+        case CLOCK_SCOPE:    fullScope(gfx, t, cfg, extras); break;
+        case CLOCK_NIXIE:    fullNixie(gfx, t, cfg, extras); break;
+        case CLOCK_FLIP:     fullFlip(gfx, t, cfg, extras); break;
         default:             fullClassic(gfx, t, cfg, extras); break;
     }
     gfx.setTransparentColor(C_BG);   // los iconos del tiempo usan el fondo como transparente

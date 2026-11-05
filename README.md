@@ -1,10 +1,10 @@
 # TimeDesk
 
-Reloj y estación meteorológica de escritorio para **ESP8266** con pantalla táctil a color. Muestra la hora con 14 estilos visuales, el tiempo actual, el pronóstico y la fase lunar, y se configura por completo desde el navegador. Se actualiza solo cada día desde GitHub.
+Reloj y estación meteorológica de escritorio para **ESP8266** con pantalla táctil a color. Muestra la hora con 20 estilos visuales, el tiempo actual, el pronóstico y la fase lunar, y se configura por completo desde el navegador. Se actualiza solo cada día desde GitHub.
 
 ## Características
 
-- **14 estilos de reloj** (relojes clásicos, informática retro y videojuegos) que se cambian en caliente desde la web o desde la pantalla táctil, con vistas previas reales.
+- **20 estilos de reloj** (relojes, ambientes, informática y electrónica, videojuegos) que se cambian en caliente desde la web o desde la pantalla táctil, con vistas previas reales.
 - **Tiempo y pronóstico** de OpenWeatherMap, con fases lunares y salida y puesta del sol.
 - **Portal web de configuración**: WiFi (con búsqueda de redes), API, ubicación, idioma, zona horaria, unidades, brillo e intervalo de actualización.
 - **Primer arranque sin cables**: crea su propio punto de acceso con portal cautivo.
@@ -103,8 +103,19 @@ En `http://timedesk.local/clock` aparece una **vista previa real** de cada estil
 | **Analógico** | Esfera con números, agujas, segundero y ventanilla con el día |
 | **Retro** | LCD ámbar de 7 segmentos con segmentos «fantasma», días de la semana y AM/PM |
 | **Futurista** | Panel de datos cian y magenta con anillo de 60 marcas de segundos |
+| **Nixie** | Tubos de neón naranja con rejilla, zócalo y lámparas en los dos puntos |
+| **Flip clock** | Tarjetas abatibles; al cambiar el minuto se ve la hoja a medio caer |
 
-**Informática retro**
+**Ambientes**
+
+| Estilo | Pantalla de reloj completa |
+|--------|----------------------------|
+| **Según el tiempo** | La escena y la paleta cambian con el tiempo real: sol, luna, nubes, lluvia, tormenta con rayos, nieve o niebla |
+| **Noche estrellada** | Estrellas que titilan, constelación, estrella fugaz y la luna con su fase real |
+| **Acuario** | Peces que nadan, algas que se mecen, burbujas y la hora dentro de una burbuja |
+| **Anime** | Viñeta con líneas de velocidad, brillos, carita que parpadea y bocadillo con el tiempo |
+
+**Informática y electrónica**
 
 | Estilo | Pantalla de reloj completa |
 |--------|----------------------------|
@@ -112,6 +123,7 @@ En `http://timedesk.local/clock` aparece una **vista previa real** de cada estil
 | **Escritorio 3D** | Ventana biselada con barra de progreso de bloques y barra de tareas con bandeja |
 | **Terminal** | Sesión de shell en fósforo verde (`date`, `uptime`, `weather`) con cursor parpadeante |
 | **Micro 8-bit** | Pantalla de BASIC de un microordenador doméstico con marco de color |
+| **Osciloscopio** | La hora trazada por el haz sobre la rejilla, onda viva, lecturas y mandos que giran |
 
 **Videojuegos**
 
@@ -122,12 +134,6 @@ En `http://timedesk.local/clock` aparece una **vista previa real** de cada estil
 | **Aventura** | Fantasía 16-bit: corazones de vida, oro, cofre que se abre y cuadro de diálogo con el tiempo |
 | **Velocidad** | Carreras arcade 16-bit: hora en cursiva, sol con franjas y carretera en perspectiva en movimiento |
 | **Plataformas** | Hora hecha de bloques, nubes, colinas y una mascota que recoge estrellas |
-
-**Otros**
-
-| Estilo | Pantalla de reloj completa |
-|--------|----------------------------|
-| **Anime** | Viñeta con líneas de velocidad, brillos, carita que parpadea y bocadillo con el tiempo |
 
 Todos los estilos son diseños originales inspirados en épocas y géneros; no reproducen logotipos, personajes ni pantallas de productos concretos.
 

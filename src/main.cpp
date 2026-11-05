@@ -593,6 +593,9 @@ ClockExtras buildClockExtras() {
     extras.location = configManager.config.locationName;
     extras.freeHeap = ESP.getFreeHeap();
     extras.uptimeSec = millis() / 1000;
+    extras.moonIllumination = moonData.illumination;
+    extras.moonWaxing = moonData.phase.index <= 4;
+    extras.northernHemisphere = currentWeather.lat >= 0;
     return extras;
 }
 
@@ -717,6 +720,7 @@ void updateData() {
     moonData = smCalc->calculateSunAndMoonData().moon;
     delete smCalc;
     
+    clockSetWeatherIcon(currentWeather.icon);   // paleta del estilo "Según el tiempo"
     drawProgress(100, "Actualización completa");
     Serial.printf("[Update] Done. Free heap: %d bytes\n", ESP.getFreeHeap());
     delay(500);
