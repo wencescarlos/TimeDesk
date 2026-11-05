@@ -1,6 +1,6 @@
 # TimeDesk
 
-Reloj y estación meteorológica de escritorio para **ESP8266** con pantalla táctil a color. Muestra la hora con 20 estilos visuales, el tiempo actual, el pronóstico y la fase lunar, y se configura por completo desde el navegador. Se actualiza solo cada día desde GitHub.
+Reloj y estación meteorológica de escritorio para **ESP8266** con pantalla táctil a color. Muestra la hora con 20 estilos visuales, el tiempo actual, el pronóstico y la fase lunar, y se configura por completo desde el navegador.
 
 ## Características
 
@@ -9,8 +9,7 @@ Reloj y estación meteorológica de escritorio para **ESP8266** con pantalla tá
 - **Portal web de configuración**: WiFi (con búsqueda de redes), API, ubicación, idioma, zona horaria, unidades, brillo e intervalo de actualización.
 - **Primer arranque sin cables**: crea su propio punto de acceso con portal cautivo.
 - **Horario de pantalla**: se apaga y se enciende sola a las horas que elijas.
-- **Actualización automática diaria** desde las Releases de GitHub, con verificación opcional por firma RSA.
-- **Actualización manual OTA** subiendo el `.bin` desde el navegador.
+- **Actualización del firmware por WiFi (OTA)** subiendo el `.bin` desde el navegador.
 - **Menú de ajustes táctil** en el propio dispositivo.
 - **Portal protegido con contraseña** (opcional) y registro de los últimos reinicios en `/estado`.
 - Configuración guardada en JSON en la memoria flash (LittleFS).
@@ -84,12 +83,11 @@ El nombre `timedesk.local` funciona en Windows 10/11, macOS, iOS, Linux (con Ava
 |------|-------------|
 | `/` | Configuración completa |
 | `/clock` | Estilo del reloj, brillo y pantalla de inicio (sin reiniciar) |
-| `/clock-preview.bmp?s=N` | Captura del estilo N tal como se vería en la pantalla |
+| `/clock-preview.bmp?s=N` | Captura del estilo N a media resolución (120×160) |
 | `/schedule` | Horario de encendido y apagado de la pantalla |
-| `/update` | Actualización automática desde GitHub y subida manual de firmware |
+| `/update` | Actualización del firmware subiendo `firmware.bin` |
 | `/estado` | Estado: versión, memoria libre (actual y mínima), WiFi y últimos reinicios |
 | `/status` | Estado del dispositivo (JSON) |
-| `/update-info` | Estado de la actualización automática (JSON) |
 | `/scan` | Redes WiFi cercanas (JSON) |
 | `/reset` | Restaurar valores de fábrica |
 
@@ -105,7 +103,7 @@ El portal usa HTTP sin cifrar dentro de tu red local, así que la contraseña pr
 
 ### Registro de reinicios
 
-En `/estado` aparecen los 10 últimos reinicios con su motivo: encendido, reinicio por software (por ejemplo, tras guardar o actualizar), bloqueo (watchdog) o excepción. En las excepciones se muestra el tipo y la dirección del código donde ocurrió (`0x4020…`); si ves alguna, esa dirección permite localizar el fallo. También se muestra la memoria libre mínima desde el arranque: si baja de unos 6 KB, el portal y las actualizaciones pueden fallar.
+En `/estado` aparecen los 10 últimos reinicios con su motivo: encendido, reinicio por software (por ejemplo, tras guardar o actualizar), bloqueo (watchdog) o excepción. En las excepciones se muestra el tipo y la dirección del código donde ocurrió (`0x4020…`); si ves alguna, esa dirección permite localizar el fallo. Tras una excepción o un bloqueo aparece además la tarjeta **Pila del último fallo**, con las direcciones de la cadena de llamadas (se guarda en la memoria RTC y se pierde al desenchufar). También se muestra la memoria libre mínima desde el arranque: si baja de unos 6 KB, el portal puede fallar.
 
 ## Estilos de reloj
 
@@ -190,43 +188,32 @@ Pantallas, en orden:
 - Estilo del reloj.
 - **Guardar** para conservar los cambios tras un reinicio.
 
-## Actualización automática desde GitHub
+## Actualizar el firmware
 
-Una vez al día (por defecto entre las 04:00 y las 04:45) el dispositivo lee `version.txt` de la **última Release** del repositorio. La comprobación se hace en un arranque dedicado: el reloj se reinicia, comprueba (e instala si hace falta) antes de cargar el portal y el resto, con toda la memoria libre, y vuelve a reiniciarse. Una conexión HTTPS necesita unos 27 KB, que con todo en marcha no siempre están disponibles. Si la versión es mayor que la instalada, descarga `firmware.bin`, lo instala y se reinicia. En `/update` puedes activarla o desactivarla, cambiar el repositorio y la hora, y pulsar **Buscar ahora**.
+1. Descarga `firmware.bin` de la [última Release](https://github.com/wencescarlos/TimeDesk/releases/latest).
+2. Abre `http://timedesk.local/update` (o la IP del reloj), selecciona el fichero y pulsa **Actualizar Firmware**.
+3. El reloj instala la versión nueva y se reinicia solo (1-2 minutos). La configuración se conserva.
 
-El repositorio debe ser público: el dispositivo descarga sin credenciales.
+La versión instalada aparece en `/update` y en `/estado`.
+
+> El firmware ya no se descarga solo desde GitHub: en el ESP8266, una conexión HTTPS con GitHub necesita casi toda la memoria libre y varios segundos de cálculo sin pausa, lo que hacía la actualización automática poco fiable.
 
 ### Publicar una versión nueva
 
-1. Sube el número de versión en `include/version.h` (por ejemplo, `1.3.0`).
+1. Sube el número de versión en `include/version.h` (por ejemplo, `1.5.1`).
 2. Haz commit y crea el tag correspondiente:
    ```bash
-   git tag v1.3.0
-   git push origin v1.3.0
+   git tag v1.5.1
+   git push origin v1.5.1
    ```
    También puedes lanzar el workflow **Release firmware** a mano desde la pestaña *Actions*.
-3. `.github/workflows/release.yml` compila el firmware y publica una Release con `firmware.bin` y `version.txt`. Si el tag no coincide con `version.h`, el workflow falla a propósito.
-
-Los dispositivos solo comparan números de versión: **no publiques nunca una Release sin subir la versión**.
-
-### Firma del firmware (recomendado)
-
-La descarga va por HTTPS, pero el ESP8266 no comprueba el certificado de GitHub. Para que nadie pueda instalarte un firmware falso, firma las Releases:
-
-```bash
-openssl genrsa -out ota_private.key 2048
-openssl rsa -in ota_private.key -pubout -out ota_public.key
-```
-
-- Pega el contenido de `ota_public.key` en `include/ota_public_key.h`.
-- Crea el secreto `OTA_SIGNING_KEY` en GitHub (*Settings → Secrets and variables → Actions*) con el contenido de `ota_private.key`. **No subas nunca la clave privada al repositorio.**
-
-Con la clave pública compilada, el dispositivo rechaza cualquier actualización automática que no esté firmada con tu clave. La subida manual desde `/update` sigue aceptando binarios sin firmar. La primera versión con clave hay que instalarla por USB o con la subida manual.
+3. `.github/workflows/release.yml` compila el firmware y publica una Release con `firmware.bin`. Si el tag no coincide con `version.h`, el workflow falla a propósito.
 
 ## Desarrollo
 
-- **Compilación automática:** cada Pull Request se compila en GitHub Actions (`.github/workflows/build.yml`). El resumen muestra la RAM y la flash usadas, y la comprobación falla si la RAM fija supera 43.000 bytes: por encima, el dispositivo se queda sin memoria para el portal y las descargas.
+- **Compilación automática:** cada Pull Request se compila en GitHub Actions (`.github/workflows/build.yml`). El resumen muestra la RAM y la flash usadas, y la comprobación falla si la RAM fija supera 43.000 bytes: por encima, el dispositivo se queda sin memoria para el portal.
 - **Versiones fijadas:** la plataforma y las librerías tienen versión exacta en `platformio.ini`. Para actualizarlas, cambia la versión y revisa el resultado de la compilación en el Pull Request.
+- **Direcciones de fallos:** lanza a mano el workflow **Compilar** con la entrada `direcciones` (las `0x…` de `/estado`) sobre la misma versión del firmware: el registro traduce cada dirección a su función con `addr2line`.
 - **Textos en flash:** en el ESP8266 cada texto entre comillas ocupa RAM salvo que se marque con `F("…")` o `PSTR("…")`. Los datos `PROGMEM` solo se pueden leer con las funciones `_P` o `pgm_read_*`; leerlos como si estuvieran en RAM reinicia el dispositivo, y en el PC no se nota.
 
 ## Configuración avanzada
@@ -242,8 +229,6 @@ Constantes de `include/config.h`:
 | `MDNS_NAME` | `timedesk` | Nombre del portal en la red local (`http://timedesk.local`) |
 | `AP_SSID` | `TimeDesk-Config` | Nombre del punto de acceso de configuración |
 | `AP_PASSWORD` | `timedesk1234` | Contraseña del punto de acceso |
-| `DEFAULT_UPDATE_REPO` | `wencescarlos/TimeDesk` | Repositorio de las actualizaciones automáticas |
-| `DEFAULT_UPDATE_HOUR` | `4` | Hora de la comprobación diaria |
 
 El intervalo de actualización del tiempo (5-60 min), el brillo y el resto de opciones se cambian desde el portal web.
 
@@ -260,9 +245,7 @@ TimeDesk/
 │   ├── clock_styles.h        # API de los estilos de reloj
 │   ├── clock_page.h          # Página /clock (guardada en flash)
 │   ├── bmp_writer.h          # Imágenes BMP de las vistas previas
-│   ├── github_updater.h      # Actualización automática desde GitHub
 │   ├── reset_log.h           # Registro de reinicios y memoria mínima
-│   ├── ota_public_key.h      # Clave pública para verificar la firma (opcional)
 │   ├── TouchControllerWS.h   # Controlador y calibración del táctil
 │   ├── TZinfo.h              # Zonas horarias
 │   ├── ArialRounded.h        # Fuentes
@@ -272,12 +255,9 @@ TimeDesk/
 │   ├── main.cpp              # Programa principal y pantallas
 │   ├── web_portal.cpp        # Portal web
 │   ├── clock_styles.cpp      # Paletas y dibujo de los estilos de reloj
-│   ├── github_updater.cpp    # Comprobación diaria e instalación desde Releases
 │   ├── reset_log.cpp         # Registro de reinicios en /resets.csv
 │   └── TouchControllerWS.cpp # Táctil
 ├── resources/moonphases/     # Imágenes fuente de las fases lunares
-├── tools/
-│   └── sign_firmware.py      # Firma de firmware.bin (lo usa el workflow)
 └── .github/workflows/
     ├── build.yml             # Compila cada Pull Request y comprueba RAM y flash
     └── release.yml           # Compila y publica la Release al crear un tag vX.Y.Z

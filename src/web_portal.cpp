@@ -84,12 +84,6 @@ void WebPortal::handleClient() {
 
 bool WebPortal::isAPMode() { return apMode; }
 bool WebPortal::shouldRestart() { return restartRequested; }
-bool WebPortal::consumeUpdateCheckRequest() {
-    bool r = updateCheckRequested;
-    updateCheckRequested = false;
-    return r;
-}
-
 bool WebPortal::consumeShowClockRequest() {
     bool r = showClockRequested;
     showClockRequested = false;
@@ -125,9 +119,6 @@ void WebPortal::setupRoutes() {
     server.on("/reset", HTTP_POST, guard(&WebPortal::handleReset));
     server.on("/update", HTTP_GET, guard(&WebPortal::handleUpdate));
     server.on("/clock", HTTP_GET, guard(&WebPortal::handleClock));
-    server.on("/update-info", HTTP_GET, guard(&WebPortal::handleUpdateInfo));
-    server.on("/update-check", HTTP_POST, guard(&WebPortal::handleUpdateCheck));
-    server.on("/auto-update-save", HTTP_POST, guard(&WebPortal::handleAutoUpdateSave));
     server.on("/clock-save", HTTP_POST, guard(&WebPortal::handleClockSave));
     server.on("/clock-preview.bmp", HTTP_GET, guard(&WebPortal::handleClockPreview));
     server.on("/update", HTTP_POST,
@@ -535,28 +526,42 @@ void WebPortal::handleClock() {
 void WebPortal::handleClockPreview() {
     // Dibuja el estilo pedido en el framebuffer (sin enviarlo a la pantalla:
     // el bucle principal lo redibuja todo en la siguiente vuelta) y lo envía
-    // como BMP fila a fila, sin reservar memoria para la imagen entera.
+    // como BMP a media resolución (120x160, 9,5 KB en vez de 38 KB): en la
+    // página se ve a ese tamaño y la transferencia, que bloquea el reloj
+    // mientras dura, tarda la cuarta parte.
     long style = server.hasArg(F("s")) ? server.arg(F("s")).toInt() : configMgr->config.clockStyle;
     if (!previewRender || !previewPixel || style < 0 || style >= CLOCK_STYLE_MAX) {
         server.send(404, "text/plain", "Sin vista previa");
         return;
     }
-    const uint16_t W = 240, H = 320;
+    const uint16_t W = 120, H = 160;   // la pantalla es de 240x320
     uint16_t pal[4];
     previewRender((uint8_t)style, pal);
 
-    server.sendHeader("Cache-Control", "no-store");
+    // El navegador puede reutilizarla 5 min (la página pide la del estilo
+    // activo con un parámetro distinto cuando quiere refrescarla)
+    server.sendHeader(F("Cache-Control"), F("max-age=300"));
     server.setContentLength(bmp4FileSize(W, H));
     server.send(200, "image/bmp", "");
-    uint8_t buf[BMP4_HEADER_SIZE > 480 ? BMP4_HEADER_SIZE : 480];   // 4 filas de 120 bytes
+    const uint32_t rowBytes = bmp4RowBytes(W);        // 60 bytes
+    const uint8_t ROWS = 16;                           // 960 bytes por envío
+    uint8_t buf[ROWS * 60];
     bmp4Header(buf, W, H, pal);
     server.sendContent((const char *)buf, BMP4_HEADER_SIZE);
-    const uint32_t rowBytes = bmp4RowBytes(W);
-    for (int16_t y = H - 1; y >= 0; y -= 4) {
+    for (int16_t y = H - 1; y >= 0; y -= ROWS) {
         uint8_t rows = 0;
-        for (; rows < 4 && y - rows >= 0; rows++) {
-            int16_t yy = y - rows;
-            bmp4PackRow(buf + rows * rowBytes, W, [&](uint16_t x) { return previewPixel(x, yy); });
+        for (; rows < ROWS && y - rows >= 0; rows++) {
+            const uint16_t sy = (y - rows) * 2;
+            // De cada bloque 2x2 se toma el primer color que no sea el fondo
+            // (índice 0): así no desaparecen las líneas y letras de 1 píxel
+            bmp4PackRow(buf + rows * rowBytes, W, [&](uint16_t x) {
+                const uint16_t sx = x * 2;
+                uint8_t c = previewPixel(sx, sy);
+                if (!c) c = previewPixel(sx + 1, sy);
+                if (!c) c = previewPixel(sx, sy + 1);
+                if (!c) c = previewPixel(sx + 1, sy + 1);
+                return c;
+            });
         }
         server.sendContent((const char *)buf, rows * rowBytes);
         yield();
@@ -583,59 +588,6 @@ void WebPortal::handleClockSave() {
                   String(F(",\"start_clock\":")) + String(c.startOnClock ? 1 : 0) +
                   String(F(",\"brightness\":")) + String(c.brightness) + "}";
     server.send(200, "application/json", json);
-}
-
-void WebPortal::handleUpdateInfo() {
-    AppConfig &c = configMgr->config;
-    String json = String(F("{\"installed\":\"")) + FIRMWARE_VERSION + "\"";
-    json += F(",\"auto\":");   json += c.autoUpdate ? "true" : "false";
-    json += F(",\"repo\":\"");  json += jsonEscape(c.updateRepo); json += F("\"");
-    json += F(",\"hour\":");     json += String(c.updateHour);
-    json += F(",\"signed\":");   json += GithubUpdater::signingEnabled() ? "true" : "false";
-    if (updater) {
-        const GhUpdateStatus &st = updater->status();
-        json += F(",\"latest\":\"");      json += jsonEscape(st.latestVersion); json += F("\"");
-        json += F(",\"result\":");         json += String((int)st.result);
-        json += F(",\"result_text\":\"");  json += GithubUpdater::resultText(st.result); json += F("\"");
-        json += F(",\"message\":\"");     json += jsonEscape(st.message); json += F("\"");
-        json += F(",\"last_check\":\"");
-        if (st.lastCheck) {
-            char buf[20];
-            strftime(buf, sizeof(buf), "%d/%m %H:%M", localtime(&st.lastCheck));
-            json += buf;
-        }
-        json += F("\"");
-    }
-    json += F("}");
-    server.send(200, "application/json", json);
-}
-
-void WebPortal::handleUpdateCheck() {
-    if (apMode || !updater) {
-        server.send(409, "application/json", F("{\"ok\":false,\"error\":\"Sin conexion a Internet\"}"));
-        return;
-    }
-    updateCheckRequested = true;   // se ejecuta en loop(), fuera del servidor web
-    server.send(200, "application/json", F("{\"ok\":true}"));
-}
-
-void WebPortal::handleAutoUpdateSave() {
-    AppConfig &c = configMgr->config;
-    if (server.hasArg(F("repo"))) {
-        String repo = server.arg(F("repo"));
-        repo.trim();
-        if (repo.startsWith("https://github.com/")) repo.remove(0, 19);   // admite la URL completa
-        if (repo.endsWith("/")) repo.remove(repo.length() - 1);
-        if (repo.length() == 0 || repo.length() >= sizeof(c.updateRepo) || repo.indexOf('/') < 1) {
-            server.send(400, "application/json", F("{\"ok\":false,\"error\":\"Usa el formato usuario/repositorio\"}"));
-            return;
-        }
-        strlcpy(c.updateRepo, repo.c_str(), sizeof(c.updateRepo));
-    }
-    if (server.hasArg(F("auto"))) c.autoUpdate = server.arg(F("auto")).toInt() != 0;
-    if (server.hasArg(F("hour"))) c.updateHour = constrain(server.arg(F("hour")).toInt(), 0, 23);
-    configMgr->save();
-    server.send(200, "application/json", F("{\"ok\":true}"));
 }
 
 void WebPortal::handleStatusPage() {
@@ -684,15 +636,6 @@ void WebPortal::handleStatusPage() {
     s += F("<span>Portal</span><b>");
     s += configMgr->config.webPass[0] ? F("Protegido con contrasena") : F("Sin contrasena");
     s += F("</b>");
-    if (updater && updater->status().lastCheck) {
-        s += F("<span>Ultima actualizacion</span><b>");
-        s += GithubUpdater::resultText(updater->status().result);
-        if (updater->status().message.length()) {
-            s += F(" &middot; ");
-            s += htmlEscape(updater->status().message.c_str());
-        }
-        s += F("</b>");
-    }
     s += F("</div></div>");
     server.sendContent(s);
 
@@ -934,68 +877,13 @@ void WebPortal::streamUpdatePage() {
         "<a href='/update'>🔄 OTA</a>"
         "</div>"));
 
-    // ── Actualización automática desde GitHub (rellena por JS con /update-info)
-    server.sendContent_P(PSTR("<style>"
-        ".gh-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:.92em;margin-bottom:12px}"
-        ".gh-grid span{color:#adb5bd}.gh-grid b{word-break:break-word}"
-        ".sw-row{display:flex;align-items:center;gap:10px;margin:10px 0}"
-        ".switch{position:relative;display:inline-block;width:48px;height:26px;flex:none}"
-        ".switch input{opacity:0;width:0;height:0}"
-        ".slider{position:absolute;cursor:pointer;inset:0;background:#333;border-radius:26px;transition:.3s}"
-        ".slider:before{position:absolute;content:'';height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}"
-        "input:checked+.slider{background:#4cc9f0}input:checked+.slider:before{transform:translateX(22px)}"
-        ".card label{display:block;color:#adb5bd;font-size:.9em;margin:10px 0 4px}"
-        ".card input[type=text],.card select{width:100%;padding:11px 14px;border-radius:8px;border:1px solid #333;"
-        "background:#16213e;color:#fff;font-size:1em}"
-        ".row2{display:flex;gap:10px}.row2>*{flex:1}"
-        ".btn2{background:#16213e;border:1px solid #4cc9f0;color:#4cc9f0}"
-        ".gh-msg{margin-top:12px;font-size:.92em;color:#adb5bd;min-height:1.2em}"
-        "</style>"
-        "<div class='card'><h2>☁️ Actualización automática (GitHub)</h2>"
-        "<div class='gh-grid'>"
-        "<span>Instalada</span><b id='gi'>…</b>"
-        "<span>Última en GitHub</span><b id='gl'>…</b>"
-        "<span>Último intento</span><b id='gr'>…</b>"
-        "<span>Verificación</span><b id='gs'>…</b>"
-        "</div>"
-        "<div class='sw-row'><label class='switch'><input type='checkbox' id='ga'><span class='slider'></span></label>"
-        "<span>Buscar e instalar actualizaciones cada día</span></div>"
-        "<label for='grp'>Repositorio (usuario/nombre)</label>"
-        "<input type='text' id='grp' maxlength='63' placeholder='wencescarlos/TimeDesk'>"
-        "<label for='gh'>Hora de la comprobación diaria</label><select id='gh'></select>"
-        "<div class='row2'>"
-        "<button class='btn' onclick='ghSave()'>💾 Guardar</button>"
-        "<button class='btn btn2' id='gc' onclick='ghCheck()'>🔍 Buscar ahora</button>"
-        "</div><div class='gh-msg' id='gm'></div></div>"
-        "<script>"
-        "function $(i){return document.getElementById(i)}"
-        "for(var h=0;h<24;h++){var o=document.createElement('option');o.value=h;o.textContent=(h<10?'0':'')+h+':00 - '+(h<10?'0':'')+h+':59';$('gh').appendChild(o)}"
-        "function ghFill(d){$('gi').textContent='v'+d.installed;$('gl').textContent=d.latest?'v'+d.latest:'—';"
-        "$('gr').textContent=d.last_check?(d.result_text+' · '+d.last_check+(d.message?' · '+d.message:'')):'Nunca';"
-        "$('gs').innerHTML=d.signed?'&#9989; Firma RSA obligatoria':'&#9888;&#65039; Sin firma (ver README)';return d}"
-        "function ghLoad(first){return fetch('/update-info').then(function(r){return r.json()}).then(function(d){ghFill(d);"
-        "if(first){$('ga').checked=d.auto;$('grp').value=d.repo;$('gh').value=d.hour}return d})}"
-        "function ghPost(u,b){return fetch(u,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b})"
-        ".then(function(r){return r.json()})}"
-        "function ghSave(){ghPost('/auto-update-save','auto='+($('ga').checked?1:0)+'&repo='+encodeURIComponent($('grp').value.trim())+'&hour='+$('gh').value)"
-        ".then(function(d){$('gm').textContent=d.ok?'Guardado ✔':'Error: '+d.error;ghLoad()}).catch(function(){$('gm').textContent='Error al guardar'})}"
-        "function ghCheck(){var t0=Date.now(),prev=null;$('gc').disabled=true;"
-        "$('gm').textContent='El reloj se reinicia para comprobarlo con toda la memoria libre; si hay versión nueva la instala (1-2 min).';"
-        "ghLoad().then(function(d){prev=d.last_check}).catch(function(){}).then(function(){return ghPost('/update-check','')})"
-        ".then(function(){var iv=setInterval(function(){ghLoad().then(function(d){"
-        "if(d.last_check&&d.last_check!==prev){clearInterval(iv);$('gc').disabled=false;"
-        "$('gm').textContent='Resultado: '+d.result_text+(d.message?' — '+d.message:'')}"
-        "}).catch(function(){$('gm').textContent='Trabajando… el dispositivo no responde mientras comprueba o instala.';"
-        "if(Date.now()-t0>150000){clearInterval(iv);location.reload()}})},4000)})}"
-        "ghLoad(true).catch(function(){$('gm').textContent='No se pudo leer el estado'});"
-        "</script>"));
-
     server.sendContent_P(PSTR("<div class='card'>"
-        "<h2>🔄 Actualizar Firmware (manual)</h2>"
+        "<h2>🔄 Actualizar Firmware</h2>"
         "<div class='warn'>⚠️ <strong>No interrumpas la actualización.</strong> "
         "El dispositivo se reiniciará automáticamente al terminar.</div>"
-        "<div class='info'>ℹ️ Sube el archivo <strong>firmware.bin</strong> generado por PlatformIO.<br>"
-        "Ruta del archivo: <code>.pio/build/nodemcuv2/firmware.bin</code></div>"
+        "<div class='info'>ℹ️ Versión instalada: <strong>" FIRMWARE_VERSION "</strong>.<br>"
+        "Descarga <strong>firmware.bin</strong> de la última Release del repositorio en GitHub "
+        "(o usa <code>.pio/build/nodemcuv2/firmware.bin</code> si lo compilas tú) y súbelo aquí.</div>"
         "<div class='drop' id='dp' onclick='document.getElementById(\"fw\").click()'>"
         "<div style='font-size:2.2em;margin-bottom:8px'>📁</div>"
         "<div class='dt' id='dt'>Haz clic para seleccionar firmware.bin</div>"

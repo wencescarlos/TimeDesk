@@ -118,8 +118,7 @@ uint32_t minFreeHeap() {
 }  // namespace ResetLog
 
 // ── Pila del último fallo ────────────────────────────────────────────────
-// Memoria RTC de usuario: 32-35 marca diaria y petición de actualización,
-// 40-78 estado de la actualización, 80-104 esta pila.
+// Memoria RTC de usuario (bloques de 4 bytes), offsets 80-104.
 static const uint32_t CRASH_RTC_OFFSET = 80;
 static const uint32_t CRASH_MAGIC = 0x54444B43;   // "TDKC"
 
@@ -137,6 +136,12 @@ extern "C" void custom_crash_callback(struct rst_info *ri, uint32_t stack, uint3
     c.reason = ri->reason;
     c.epc1 = ri->epc1;
     c.excvaddr = ri->excvaddr;
+    // Solo se lee dentro de la RAM de datos y como mucho 2 KB: si la pila
+    // está corrupta, el propio gancho no debe provocar otro fallo
+    const uint32_t RAM_START = 0x3FFE8000, RAM_END = 0x40000000;
+    if (stack < RAM_START || stack >= RAM_END) stack = stack_end;
+    if (stack_end > RAM_END) stack_end = RAM_END;
+    if (stack_end > stack + 2048) stack_end = stack + 2048;
     for (uint32_t p = stack & ~3u; p + 4 <= stack_end && c.count < ResetLog::CRASH_ADDRS; p += 4) {
         uint32_t v = *(volatile uint32_t *)p;
         if (isCodeAddr(v)) c.addr[c.count++] = v;

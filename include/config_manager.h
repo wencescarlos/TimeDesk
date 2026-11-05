@@ -38,9 +38,6 @@ public:
         config.updateIntervalMin = 10;
         config.clockStyle = 0;
         config.startOnClock = false;
-        config.autoUpdate = true;
-        strlcpy(config.updateRepo, DEFAULT_UPDATE_REPO, sizeof(config.updateRepo));
-        config.updateHour = DEFAULT_UPDATE_HOUR;
         strlcpy(config.webUser, DEFAULT_WEB_USER, sizeof(config.webUser));
         strlcpy(config.webPass, "", sizeof(config.webPass));
     }
@@ -55,7 +52,6 @@ public:
         config.screenOnMinute %= 60;
         config.screenOffMinute %= 60;
         if (config.clockStyle >= CLOCK_STYLE_MAX) config.clockStyle = 0;
-        config.updateHour %= 24;
     }
     
     bool begin() {
@@ -115,9 +111,6 @@ public:
         config.updateIntervalMin = doc[F("update_min")] | 10;
         config.clockStyle = doc[F("clock_style")] | 0;
         config.startOnClock = doc[F("start_clock")] | false;
-        config.autoUpdate = doc[F("auto_update")] | true;
-        strlcpy(config.updateRepo, doc[F("update_repo")] | DEFAULT_UPDATE_REPO, sizeof(config.updateRepo));
-        config.updateHour = doc[F("update_hour")] | DEFAULT_UPDATE_HOUR;
         strlcpy(config.webUser, doc[F("web_user")] | DEFAULT_WEB_USER, sizeof(config.webUser));
         strlcpy(config.webPass, doc[F("web_pass")] | "", sizeof(config.webPass));
         if (config.webUser[0] == 0) strlcpy(config.webUser, DEFAULT_WEB_USER, sizeof(config.webUser));
@@ -151,9 +144,6 @@ public:
         doc[F("update_min")] = config.updateIntervalMin;
         doc[F("clock_style")] = config.clockStyle;
         doc[F("start_clock")] = config.startOnClock;
-        doc[F("auto_update")] = config.autoUpdate;
-        doc[F("update_repo")] = config.updateRepo;
-        doc[F("update_hour")] = config.updateHour;
         doc[F("web_user")] = config.webUser;
         doc[F("web_pass")] = config.webPass;
         
