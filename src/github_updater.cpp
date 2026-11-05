@@ -265,7 +265,14 @@ struct HttpsGet {
             client.stop();                     // libera la conexión del salto anterior
             client.setInsecure();              // la autenticidad la da la firma RSA, no el canal
             client.setTimeout(NET_TIMEOUT_MS);
-            if (!client.connect(host, 443)) {
+            // El saludo TLS (curvas elípticas) hace cálculos de varios segundos
+            // sin ceder la CPU: el watchdog de software (~3 s) reiniciaba el
+            // equipo. Se pausa solo durante la conexión; el de hardware (~6 s)
+            // sigue vigilando. A 160 MHz (ver runBootUpdate) tarda la mitad.
+            ESP.wdtDisable();
+            bool connected = client.connect(host, 443);
+            ESP.wdtEnable(0);
+            if (!connected) {
                 error = String(F("Salto ")) + hop + F(": no conecta con ") + host + heapNote();
                 return false;
             }
