@@ -627,7 +627,7 @@ void setBacklight(bool on) {
     current = level;
     analogWriteRange(100);
     if (level >= 100) digitalWrite(TFT_LED, HIGH);
-    else if (level <= 0) setBacklight(false);
+    else if (level <= 0) digitalWrite(TFT_LED, LOW);
     else analogWrite(TFT_LED, level);
 }
 
