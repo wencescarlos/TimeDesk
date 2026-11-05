@@ -640,6 +640,8 @@ void runBootUpdate(uint32_t requestedAt) {
     // CPU a 160 MHz: la criptografía del saludo TLS tarda la mitad. Al acabar
     // se reinicia siempre, así que el resto del firmware sigue a 80 MHz.
     system_update_cpu_freq(SYS_CPU_160MHZ);
+    // Brillo fijo (sin PWM): el temporizador 1 lo usa el guardián del saludo TLS
+    digitalWrite(TFT_LED, HIGH);
     // El panel conserva la imagen: se libera el framebuffer antes de nada
     gfx.freeBuffer();
     Serial.printf_P(PSTR("[OTA-GH] Arranque de actualizacion (heap %u, bloque %u)\n"),

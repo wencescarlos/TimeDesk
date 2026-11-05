@@ -190,6 +190,41 @@ const uint8_t MAX_HOPS = 6;
 
 // La conexión TLS necesita un bloque de ~16,7 KB seguidos: se informa del
 // total libre y del mayor bloque, que es lo que decide si se puede conectar.
+// ── Guardián del saludo TLS ─────────────────────────────────────────────
+// Los cálculos de curva elíptica del saludo TLS pasan varios segundos sin
+// ceder la CPU y el saludo completo puede pasar de 6 s. El watchdog de
+// software (~3 s) reiniciaba el equipo, y si solo se para, el de hardware
+// salta a los ~6 s porque nadie lo alimenta. Mientras dura client.connect()
+// se para el de software y una interrupción del temporizador 1 alimenta el
+// de hardware cada 0,5 s, con un límite propio: pasados TLS_GUARD_S segundos
+// deja de alimentarlo y el watchdog reinicia el equipo igualmente.
+// (El temporizador 1 lo usa también el PWM del brillo: runBootUpdate deja la
+// pantalla sin PWM y al acabar el equipo se reinicia siempre.)
+static const uint16_t TLS_GUARD_S = 40;
+static volatile uint16_t tlsGuardTicks = 0;
+
+static void IRAM_ATTR tlsGuardIsr() {
+    if (tlsGuardTicks) {
+        tlsGuardTicks--;
+        WDT_FEED();
+    }
+}
+
+void tlsGuardStart() {
+    tlsGuardTicks = TLS_GUARD_S * 2;
+    timer1_attachInterrupt(tlsGuardIsr);
+    timer1_enable(TIM_DIV256, TIM_EDGE, TIM_LOOP);   // 80 MHz / 256 = 312,5 kHz
+    timer1_write(156250);                            // 0,5 s
+    ESP.wdtDisable();
+}
+
+void tlsGuardStop() {
+    ESP.wdtEnable(0);
+    timer1_disable();
+    timer1_detachInterrupt();
+    tlsGuardTicks = 0;
+}
+
 String heapNote() {
     return String(F(" (memoria ")) + String(ESP.getFreeHeap() / 1024) + F(" KB, bloque mayor ") +
            String(ESP.getMaxFreeBlockSize() / 1024) + F(" KB)");
@@ -265,13 +300,11 @@ struct HttpsGet {
             client.stop();                     // libera la conexión del salto anterior
             client.setInsecure();              // la autenticidad la da la firma RSA, no el canal
             client.setTimeout(NET_TIMEOUT_MS);
-            // El saludo TLS (curvas elípticas) hace cálculos de varios segundos
-            // sin ceder la CPU: el watchdog de software (~3 s) reiniciaba el
-            // equipo. Se pausa solo durante la conexión; el de hardware (~6 s)
-            // sigue vigilando. A 160 MHz (ver runBootUpdate) tarda la mitad.
-            ESP.wdtDisable();
+            unsigned long t0 = millis();
+            tlsGuardStart();
             bool connected = client.connect(host, 443);
-            ESP.wdtEnable(0);
+            tlsGuardStop();
+            unsigned long tlsMs = millis() - t0;
             if (!connected) {
                 error = String(F("Salto ")) + hop + F(": no conecta con ") + host + heapNote();
                 return false;
@@ -282,7 +315,8 @@ struct HttpsGet {
             client.print(host);
             client.print(F("\r\nUser-Agent: TimeDesk-ESP8266\r\nAccept: */*\r\nConnection: close\r\n\r\n"));
 
-            if (crumbTarget) crumbTarget->crumb(String(F("salto ")) + hop + F(", respuesta de ") + host);
+            if (crumbTarget) crumbTarget->crumb(String(F("salto ")) + hop + F(", respuesta de ") + host +
+                                                F(" (TLS ") + (tlsMs / 1000) + '.' + ((tlsMs / 100) % 10) + F(" s)"));
             // Línea de estado: "HTTP/1.1 302 Found"
             if (!readLine()) { error = String(F("Salto ")) + hop + F(": ") + error + heapNote(); return false; }
             if (strncmp_P(line, PSTR("HTTP/1."), 7) != 0 || strlen(line) < 12) {
