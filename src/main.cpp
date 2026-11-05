@@ -265,7 +265,7 @@ void setup() {
     delay(2500);
     yield();
     
-    if (ts.touched()) {
+    if (touchController.isTouched()) {   // lectura filtrada: el ruido no inicia la calibración
         isCalibrationAvailable = false;
         gfx.fillBuffer(MINI_BLACK);
         gfx.setColor(MINI_YELLOW);
@@ -273,7 +273,7 @@ void setup() {
         gfx.drawString(120, 160, F("Calibración iniciada"));
         gfx.drawString(120, 180, F("Suelta la pantalla"));
         gfx.commit();
-        while (ts.touched()) { delay(10); yield(); }
+        for (uint16_t i = 0; i < 500 && touchController.isTouched(); i++) { delay(10); }   // espera a soltar (máx. ~5 s)
         delay(100);
         touchController.getPoint();
     }
@@ -399,7 +399,7 @@ void loop() {
         TS_Point p = touchController.getPoint();
         timerPress = millis();
         
-        if (!asleep) {
+        if (!asleep && p.z > 0) {
             if (screen == SCR_SETTINGS) {
                 handleSettingsTouch(p);
             } else {

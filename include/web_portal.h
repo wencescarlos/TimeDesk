@@ -68,8 +68,8 @@ private:
     void handleUpdateCheck();
     void handleUpdateInfo();
 
-    String generateScheduleHTML();
-    String generateUpdateHTML();
+    void streamSchedulePage();
+    void streamUpdatePage();
     String getTimezoneOptions();
     String getWifiNetworks();
 };

@@ -14,8 +14,12 @@ public:
     void startCalibration(CalibrationCallback *callback);
     void continueCalibration();
     bool isCalibrationFinished();
+    // true si hay una pulsación válida ahora mismo (lecturas filtradas)
     bool isTouched();
+    // true solo al empezar una pulsación nueva: hay que soltar antes de que
+    // vuelva a contar, y además deben pasar debounceMillis desde la anterior
     bool isTouched(int16_t debounceMillis);
+    // Punto calibrado de la última pulsación válida
     TS_Point getPoint();
 
 private:
@@ -29,6 +33,13 @@ private:
     long lastTouched = 0;
     CalibrationCallback *calibrationCallback;
     TS_Point p1, p2;
+
+    // Filtro anti-toques fantasma (ruido eléctrico, p.ej. PWM de la retroiluminación)
+    bool readStable(TS_Point &raw);
+    TS_Point lastRaw;
+    bool hasPoint = false;
+    bool released = true;
+    unsigned long lastSeenTouch = 0;
 };
 
 #endif
