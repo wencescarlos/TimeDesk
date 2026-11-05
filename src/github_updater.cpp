@@ -6,7 +6,7 @@
 #include "ota_public_key.h"
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-#include <ESP8266httpUpdate.h>
+#include <Updater.h>
 #include <WiFiClientSecureBearSSL.h>
 
 static const char USER_AGENT[] = "TimeDesk-ESP8266";
@@ -181,19 +181,53 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
         Update.installSignature(hash, verifier);   // rechaza binarios sin firma válida
     }
 
-    BearSSL::WiFiClientSecure client;
-    client.setInsecure();
-    ESPhttpUpdate.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-    ESPhttpUpdate.rebootOnUpdate(true);
-    t_httpUpdate_return ret = ESPhttpUpdate.update(client, base + F("firmware.bin"), FIRMWARE_VERSION);
-
-    // Solo se llega aquí si falló (si va bien, el ESP se reinicia)
+    // Descarga con el mismo cliente HTTP/1.1 que version.txt (ESPhttpUpdate
+    // fuerza HTTP/1.0 y GitHub lo redirige a otro servidor de descargas que
+    // respondía con un código inesperado)
+    String error;
+    {
+        BearSSL::WiFiClientSecure client;
+        client.setInsecure();
+        HTTPClient http;
+        http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
+        http.setUserAgent(USER_AGENT);
+        http.setTimeout(15000);
+        if (!http.begin(client, base + F("firmware.bin"))) {
+            error = F("No se pudo iniciar la descarga");
+        } else {
+            int code = http.GET();
+            int len = http.getSize();
+            if (code != HTTP_CODE_OK) {
+                error = String(F("Descarga: HTTP ")) + code +
+                        (code < 0 ? String(F(" ")) + HTTPClient::errorToString(code) : String());
+            } else if (len <= 0) {
+                error = F("Descarga sin tamaño conocido");
+            } else if (!Update.begin(len)) {
+                error = String(F("Sin espacio: ")) + Update.getErrorString();
+            } else {
+                Serial.printf_P(PSTR("[OTA-GH] Descargando %d bytes\n"), len);
+                size_t written = Update.writeStream(*http.getStreamPtr());
+                if (written != (size_t)len) {
+                    error = String(F("Descarga incompleta: ")) + written + F(" de ") + len + F(" bytes");
+                    Update.end();   // incompleta: end() sin argumento la descarta; el firmware actual sigue intacto
+                } else if (!Update.end()) {
+                    // Aquí se rechaza un binario sin la firma correcta
+                    error = String(F("Verificación: ")) + Update.getErrorString();
+                }
+            }
+            http.end();
+        }
+    }
     Update.installSignature(nullptr, nullptr);   // la subida manual (/update) no exige firma
-    if (ret == HTTP_UPDATE_OK) {
-        st.message = F("Actualizado");
+
+    if (error.length() == 0) {
+        st.message = F("Actualizado, reiniciando");
+        Serial.println(F("[OTA-GH] Actualizado. Reiniciando..."));
+        delay(500);
+        ESP.restart();
         return st.result = GH_UPDATED;
     }
-    st.message = ESPhttpUpdate.getLastErrorString();
+    st.message = error;
     Serial.printf_P(PSTR("[OTA-GH] Error: %s\n"), st.message.c_str());
     return st.result = GH_INSTALL_ERROR;
 }
