@@ -87,7 +87,7 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     }
 
     String base = String(F("https://github.com/")) + cfg.updateRepo + F("/releases/latest/download/");
-    Serial.printf("[OTA-GH] Comprobando %sversion.txt (heap %u)\n", base.c_str(), ESP.getFreeHeap());
+    Serial.printf_P(PSTR("[OTA-GH] Comprobando %sversion.txt (heap %u)\n"), base.c_str(), ESP.getFreeHeap());
 
     // ── 1. Versión publicada ────────────────────────────────────────────────
     // HTTPS sin validar el certificado: la autenticidad del firmware la
@@ -110,7 +110,7 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
             return st.result = GH_NO_RELEASE;
         }
         if (code != HTTP_CODE_OK) {
-            st.message = String(F("HTTP ")) + code + " " + (code < 0 ? HTTPClient::errorToString(code) : String());
+            st.message = String(F("HTTP ")) + code + String(F(" ")) + (code < 0 ? HTTPClient::errorToString(code) : String());
             http.end();
             return st.result = GH_NETWORK_ERROR;
         }
@@ -126,12 +126,12 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
 
     if (compareVersions(st.latestVersion, FIRMWARE_VERSION) <= 0) {
         st.message = String(F("Version instalada ")) + FIRMWARE_VERSION;
-        Serial.printf("[OTA-GH] Al dia (%s)\n", FIRMWARE_VERSION);
+        Serial.printf_P(PSTR("[OTA-GH] Al dia (%s)\n"), FIRMWARE_VERSION);
         return st.result = GH_UP_TO_DATE;
     }
 
     // ── 2. Descarga e instalación ───────────────────────────────────────────
-    Serial.printf("[OTA-GH] Nueva version %s -> instalando\n", st.latestVersion.c_str());
+    Serial.printf_P(PSTR("[OTA-GH] Nueva version %s -> instalando\n"), st.latestVersion.c_str());
 
     static BearSSL::PublicKey *pubKey = nullptr;
     static BearSSL::HashSHA256 *hash = nullptr;
@@ -158,6 +158,6 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
         return st.result = GH_UPDATED;
     }
     st.message = ESPhttpUpdate.getLastErrorString();
-    Serial.printf("[OTA-GH] Error: %s\n", st.message.c_str());
+    Serial.printf_P(PSTR("[OTA-GH] Error: %s\n"), st.message.c_str());
     return st.result = GH_INSTALL_ERROR;
 }

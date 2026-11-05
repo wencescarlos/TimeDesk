@@ -44,7 +44,7 @@ void WebPortal::beginAP() {
     // DNS captive portal - redirige todo al ESP
     dnsServer.start(53, "*", WiFi.softAPIP());
     
-    Serial.printf("[WebPortal] AP Mode - SSID: %s, IP: %s\n", AP_SSID, WiFi.softAPIP().toString().c_str());
+    Serial.printf_P(PSTR("[WebPortal] AP Mode - SSID: %s, IP: %s\n"), AP_SSID, WiFi.softAPIP().toString().c_str());
     setupRoutes();
     server.begin();
 }
@@ -53,12 +53,12 @@ void WebPortal::beginSTA() {
     apMode = false;
     setupRoutes();
     server.begin();
-    Serial.printf("[WebPortal] STA server on http://%s/\n", WiFi.localIP().toString().c_str());
+    Serial.printf_P(PSTR("[WebPortal] STA server on http://%s/\n"), WiFi.localIP().toString().c_str());
     
     // mDNS: el portal también responde en http://timedesk.local
     if (MDNS.begin(MDNS_NAME)) {
         MDNS.addService("http", "tcp", WEB_SERVER_PORT);
-        Serial.printf("[WebPortal] mDNS activo: http://%s.local/\n", MDNS_NAME);
+        Serial.printf_P(PSTR("[WebPortal] mDNS activo: http://%s.local/\n"), MDNS_NAME);
     } else {
         Serial.println(F("[WebPortal] No se pudo iniciar mDNS"));
     }
@@ -240,13 +240,13 @@ void WebPortal::handleRoot() {
         };
         String s;
         for (auto& l : langs) {
-            s += "<option value='";
+            s += F("<option value='");
             s += l[0];
-            s += "'";
-            if (configMgr->config.owmLanguage == l[0]) s += " selected";
-            s += ">";
+            s += F("'");
+            if (configMgr->config.owmLanguage == l[0]) s += F(" selected");
+            s += F(">");
             s += l[1];
-            s += "</option>";
+            s += F("</option>");
         }
         s += F("</select></div>");
         server.sendContent(s);
@@ -342,27 +342,27 @@ void WebPortal::handleRoot() {
 }
 
 void WebPortal::handleSave() {
-    if (server.hasArg("ssid")) strlcpy(configMgr->config.wifiSSID, server.arg("ssid").c_str(), sizeof(configMgr->config.wifiSSID));
-    if (server.hasArg("pass")) strlcpy(configMgr->config.wifiPassword, server.arg("pass").c_str(), sizeof(configMgr->config.wifiPassword));
-    if (server.hasArg("api")) strlcpy(configMgr->config.owmApiKey, server.arg("api").c_str(), sizeof(configMgr->config.owmApiKey));
-    if (server.hasArg("locid")) strlcpy(configMgr->config.owmLocationId, server.arg("locid").c_str(), sizeof(configMgr->config.owmLocationId));
-    if (server.hasArg("locname")) strlcpy(configMgr->config.locationName, server.arg("locname").c_str(), sizeof(configMgr->config.locationName));
-    if (server.hasArg("tz")) strlcpy(configMgr->config.timezone, server.arg("tz").c_str(), sizeof(configMgr->config.timezone));
-    if (server.hasArg("lang")) configMgr->config.owmLanguage = server.arg("lang");
+    if (server.hasArg(F("ssid"))) strlcpy(configMgr->config.wifiSSID, server.arg(F("ssid")).c_str(), sizeof(configMgr->config.wifiSSID));
+    if (server.hasArg(F("pass"))) strlcpy(configMgr->config.wifiPassword, server.arg(F("pass")).c_str(), sizeof(configMgr->config.wifiPassword));
+    if (server.hasArg(F("api"))) strlcpy(configMgr->config.owmApiKey, server.arg(F("api")).c_str(), sizeof(configMgr->config.owmApiKey));
+    if (server.hasArg(F("locid"))) strlcpy(configMgr->config.owmLocationId, server.arg(F("locid")).c_str(), sizeof(configMgr->config.owmLocationId));
+    if (server.hasArg(F("locname"))) strlcpy(configMgr->config.locationName, server.arg(F("locname")).c_str(), sizeof(configMgr->config.locationName));
+    if (server.hasArg(F("tz"))) strlcpy(configMgr->config.timezone, server.arg(F("tz")).c_str(), sizeof(configMgr->config.timezone));
+    if (server.hasArg(F("lang"))) configMgr->config.owmLanguage = server.arg(F("lang"));
     
-    configMgr->config.isMetric = server.hasArg("metric");
-    configMgr->config.is12hStyle = server.hasArg("12h");
-    configMgr->config.isHHMM = server.hasArg("hhmm");
+    configMgr->config.isMetric = server.hasArg(F("metric"));
+    configMgr->config.is12hStyle = server.hasArg(F("12h"));
+    configMgr->config.isHHMM = server.hasArg(F("hhmm"));
     
-    if (server.hasArg("update_min")) configMgr->config.updateIntervalMin = server.arg("update_min").toInt();
-    if (server.hasArg("brightness")) configMgr->config.brightness = server.arg("brightness").toInt();
+    if (server.hasArg(F("update_min"))) configMgr->config.updateIntervalMin = server.arg(F("update_min")).toInt();
+    if (server.hasArg(F("brightness"))) configMgr->config.brightness = server.arg(F("brightness")).toInt();
     
     // Screen schedule from main form
-    if (server.hasArg("scr_on_h")) configMgr->config.screenOnHour = server.arg("scr_on_h").toInt();
-    if (server.hasArg("scr_on_m")) configMgr->config.screenOnMinute = server.arg("scr_on_m").toInt();
-    if (server.hasArg("scr_off_h")) configMgr->config.screenOffHour = server.arg("scr_off_h").toInt();
-    if (server.hasArg("scr_off_m")) configMgr->config.screenOffMinute = server.arg("scr_off_m").toInt();
-    configMgr->config.screenSleepEnabled = server.hasArg("scr_sleep");
+    if (server.hasArg(F("scr_on_h"))) configMgr->config.screenOnHour = server.arg(F("scr_on_h")).toInt();
+    if (server.hasArg(F("scr_on_m"))) configMgr->config.screenOnMinute = server.arg(F("scr_on_m")).toInt();
+    if (server.hasArg(F("scr_off_h"))) configMgr->config.screenOffHour = server.arg(F("scr_off_h")).toInt();
+    if (server.hasArg(F("scr_off_m"))) configMgr->config.screenOffMinute = server.arg(F("scr_off_m")).toInt();
+    configMgr->config.screenSleepEnabled = server.hasArg(F("scr_sleep"));
     
     configMgr->save();
     
@@ -379,16 +379,16 @@ void WebPortal::handleSave() {
 
 void WebPortal::handleStatus() {
     String json = "{";
-    json += "\"heap\":" + String(ESP.getFreeHeap()) + ",";
-    json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
-    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += String(F("\"heap\":")) + String(ESP.getFreeHeap()) + ",";
+    json += String(F("\"rssi\":")) + String(WiFi.RSSI()) + ",";
+    json += String(F("\"ip\":\"")) + WiFi.localIP().toString() + "\",";
     json += "\"mdns\":\"" MDNS_NAME ".local\",";
-    json += "\"uptime\":" + String(millis() / 1000) + ",";
-    json += "\"vcc\":" + String(ESP.getVcc() / 1024.0) + ",";
-    json += "\"scr_on\":\"" + String(configMgr->config.screenOnHour) + ":" + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute) + "\",";
-    json += "\"clock_style\":" + String(configMgr->config.clockStyle) + ",";
-    json += "\"scr_off\":\"" + String(configMgr->config.screenOffHour) + ":" + (configMgr->config.screenOffMinute < 10 ? "0" : "") + String(configMgr->config.screenOffMinute) + "\"";
-    json += "}";
+    json += String(F("\"uptime\":")) + String(millis() / 1000) + ",";
+    json += String(F("\"vcc\":")) + String(ESP.getVcc() / 1024.0) + ",";
+    json += String(F("\"scr_on\":\"")) + String(configMgr->config.screenOnHour) + String(F(":")) + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute) + "\",";
+    json += String(F("\"clock_style\":")) + String(configMgr->config.clockStyle) + ",";
+    json += String(F("\"scr_off\":\"")) + String(configMgr->config.screenOffHour) + String(F(":")) + (configMgr->config.screenOffMinute < 10 ? "0" : "") + String(configMgr->config.screenOffMinute) + "\"";
+    json += F("}");
     server.send(200, "application/json", json);
 }
 
@@ -397,11 +397,11 @@ void WebPortal::handleSchedule() {
 }
 
 void WebPortal::handleScheduleSave() {
-    if (server.hasArg("scr_on_h")) configMgr->config.screenOnHour = server.arg("scr_on_h").toInt();
-    if (server.hasArg("scr_on_m")) configMgr->config.screenOnMinute = server.arg("scr_on_m").toInt();
-    if (server.hasArg("scr_off_h")) configMgr->config.screenOffHour = server.arg("scr_off_h").toInt();
-    if (server.hasArg("scr_off_m")) configMgr->config.screenOffMinute = server.arg("scr_off_m").toInt();
-    configMgr->config.screenSleepEnabled = server.hasArg("scr_sleep");
+    if (server.hasArg(F("scr_on_h"))) configMgr->config.screenOnHour = server.arg(F("scr_on_h")).toInt();
+    if (server.hasArg(F("scr_on_m"))) configMgr->config.screenOnMinute = server.arg(F("scr_on_m")).toInt();
+    if (server.hasArg(F("scr_off_h"))) configMgr->config.screenOffHour = server.arg(F("scr_off_h")).toInt();
+    if (server.hasArg(F("scr_off_m"))) configMgr->config.screenOffMinute = server.arg(F("scr_off_m")).toInt();
+    configMgr->config.screenSleepEnabled = server.hasArg(F("scr_sleep"));
     
     configMgr->save();
     
@@ -436,7 +436,7 @@ void WebPortal::handleUpdate() {
 void WebPortal::handleUpdateUpload() {
     HTTPUpload& upload = server.upload();
     if (upload.status == UPLOAD_FILE_START) {
-        Serial.printf("[OTA] Iniciando actualización: %s\n", upload.filename.c_str());
+        Serial.printf_P(PSTR("[OTA] Iniciando actualización: %s\n"), upload.filename.c_str());
         if (!Update.begin(ESP.getFreeSketchSpace())) {
             Update.printError(Serial);
         }
@@ -446,7 +446,7 @@ void WebPortal::handleUpdateUpload() {
         }
     } else if (upload.status == UPLOAD_FILE_END) {
         if (Update.end(true)) {
-            Serial.printf("[OTA] Completado: %u bytes\n", upload.totalSize);
+            Serial.printf_P(PSTR("[OTA] Completado: %u bytes\n"), upload.totalSize);
         } else {
             Update.printError(Serial);
         }
@@ -458,9 +458,9 @@ void WebPortal::handleClock() {
     server.setContentLength(CONTENT_LENGTH_UNKNOWN);
     server.send(200, "text/html", "");
     server.sendContent_P(CLOCK_PAGE_HEAD);
-    String state = "var CUR=" + String(configMgr->config.clockStyle) +
-                   ",START=" + String(configMgr->config.startOnClock ? 1 : 0) +
-                   ",BR=" + String(configMgr->config.brightness) + ";";
+    String state = String(F("var CUR=")) + String(configMgr->config.clockStyle) +
+                   String(F(",START=")) + String(configMgr->config.startOnClock ? 1 : 0) +
+                   String(F(",BR=")) + String(configMgr->config.brightness) + ";";
     server.sendContent(state);
     server.sendContent_P(CLOCK_PAGE_TAIL);
 }
@@ -469,7 +469,7 @@ void WebPortal::handleClockPreview() {
     // Dibuja el estilo pedido en el framebuffer (sin enviarlo a la pantalla:
     // el bucle principal lo redibuja todo en la siguiente vuelta) y lo envía
     // como BMP fila a fila, sin reservar memoria para la imagen entera.
-    long style = server.hasArg("s") ? server.arg("s").toInt() : configMgr->config.clockStyle;
+    long style = server.hasArg(F("s")) ? server.arg(F("s")).toInt() : configMgr->config.clockStyle;
     if (!previewRender || !previewPixel || style < 0 || style >= CLOCK_STYLE_MAX) {
         server.send(404, "text/plain", "Sin vista previa");
         return;
@@ -499,22 +499,22 @@ void WebPortal::handleClockPreview() {
 void WebPortal::handleClockSave() {
     // Cambios en caliente: se guardan y se aplican sin reiniciar
     AppConfig &c = configMgr->config;
-    if (server.hasArg("style")) {
-        long st = server.arg("style").toInt();
+    if (server.hasArg(F("style"))) {
+        long st = server.arg(F("style")).toInt();
         if (st < 0 || st >= CLOCK_STYLE_MAX) {
             server.send(400, "application/json", F("{\"ok\":false,\"error\":\"estilo no valido\"}"));
             return;
         }
         c.clockStyle = st;
     }
-    if (server.hasArg("start_clock")) c.startOnClock = server.arg("start_clock").toInt() != 0;
-    if (server.hasArg("brightness")) c.brightness = constrain(server.arg("brightness").toInt(), 10, 100);
-    if (server.hasArg("show")) showClockRequested = true;
+    if (server.hasArg(F("start_clock"))) c.startOnClock = server.arg(F("start_clock")).toInt() != 0;
+    if (server.hasArg(F("brightness"))) c.brightness = constrain(server.arg(F("brightness")).toInt(), 10, 100);
+    if (server.hasArg(F("show"))) showClockRequested = true;
     configMgr->save();
 
-    String json = "{\"ok\":true,\"style\":" + String(c.clockStyle) +
-                  ",\"start_clock\":" + String(c.startOnClock ? 1 : 0) +
-                  ",\"brightness\":" + String(c.brightness) + "}";
+    String json = String(F("{\"ok\":true,\"style\":")) + String(c.clockStyle) +
+                  String(F(",\"start_clock\":")) + String(c.startOnClock ? 1 : 0) +
+                  String(F(",\"brightness\":")) + String(c.brightness) + "}";
     server.send(200, "application/json", json);
 }
 
@@ -522,24 +522,24 @@ void WebPortal::handleUpdateInfo() {
     AppConfig &c = configMgr->config;
     String json = String(F("{\"installed\":\"")) + FIRMWARE_VERSION + "\"";
     json += F(",\"auto\":");   json += c.autoUpdate ? "true" : "false";
-    json += F(",\"repo\":\"");  json += jsonEscape(c.updateRepo); json += "\"";
+    json += F(",\"repo\":\"");  json += jsonEscape(c.updateRepo); json += F("\"");
     json += F(",\"hour\":");     json += String(c.updateHour);
     json += F(",\"signed\":");   json += GithubUpdater::signingEnabled() ? "true" : "false";
     if (updater) {
         const GhUpdateStatus &st = updater->status();
-        json += F(",\"latest\":\"");      json += jsonEscape(st.latestVersion); json += "\"";
+        json += F(",\"latest\":\"");      json += jsonEscape(st.latestVersion); json += F("\"");
         json += F(",\"result\":");         json += String((int)st.result);
-        json += F(",\"result_text\":\"");  json += GithubUpdater::resultText(st.result); json += "\"";
-        json += F(",\"message\":\"");     json += jsonEscape(st.message); json += "\"";
+        json += F(",\"result_text\":\"");  json += GithubUpdater::resultText(st.result); json += F("\"");
+        json += F(",\"message\":\"");     json += jsonEscape(st.message); json += F("\"");
         json += F(",\"last_check\":\"");
         if (st.lastCheck) {
             char buf[20];
             strftime(buf, sizeof(buf), "%d/%m %H:%M", localtime(&st.lastCheck));
             json += buf;
         }
-        json += "\"";
+        json += F("\"");
     }
-    json += "}";
+    json += F("}");
     server.send(200, "application/json", json);
 }
 
@@ -554,8 +554,8 @@ void WebPortal::handleUpdateCheck() {
 
 void WebPortal::handleAutoUpdateSave() {
     AppConfig &c = configMgr->config;
-    if (server.hasArg("repo")) {
-        String repo = server.arg("repo");
+    if (server.hasArg(F("repo"))) {
+        String repo = server.arg(F("repo"));
         repo.trim();
         if (repo.startsWith("https://github.com/")) repo.remove(0, 19);   // admite la URL completa
         if (repo.endsWith("/")) repo.remove(repo.length() - 1);
@@ -565,8 +565,8 @@ void WebPortal::handleAutoUpdateSave() {
         }
         strlcpy(c.updateRepo, repo.c_str(), sizeof(c.updateRepo));
     }
-    if (server.hasArg("auto")) c.autoUpdate = server.arg("auto").toInt() != 0;
-    if (server.hasArg("hour")) c.updateHour = constrain(server.arg("hour").toInt(), 0, 23);
+    if (server.hasArg(F("auto"))) c.autoUpdate = server.arg(F("auto")).toInt() != 0;
+    if (server.hasArg(F("hour"))) c.updateHour = constrain(server.arg(F("hour")).toInt(), 0, 23);
     configMgr->save();
     server.send(200, "application/json", F("{\"ok\":true}"));
 }
@@ -574,7 +574,7 @@ void WebPortal::handleAutoUpdateSave() {
 void WebPortal::handleNotFound() {
     // Captive portal redirect
     if (apMode) {
-        server.sendHeader("Location", "http://" + WiFi.softAPIP().toString() + "/");
+        server.sendHeader("Location", String(F("http://")) + WiFi.softAPIP().toString() + "/");
         server.send(302, "text/plain", "");
     } else {
         server.send(404, "text/plain", "404 Not Found");
@@ -585,11 +585,11 @@ String WebPortal::getWifiNetworks() {
     int n = WiFi.scanNetworks();
     String json = "[";
     for (int i = 0; i < n; i++) {
-        if (i > 0) json += ",";
-        json += "{\"ssid\":\"" + jsonEscape(WiFi.SSID(i)) + "\",\"rssi\":" + String(WiFi.RSSI(i)) + 
-                ",\"enc\":" + String(WiFi.encryptionType(i) != ENC_TYPE_NONE ? 1 : 0) + "}";
+        if (i > 0) json += F(",");
+        json += String(F("{\"ssid\":\"")) + jsonEscape(WiFi.SSID(i)) + String(F("\",\"rssi\":")) + String(WiFi.RSSI(i)) + 
+                String(F(",\"enc\":")) + String(WiFi.encryptionType(i) != ENC_TYPE_NONE ? 1 : 0) + "}";
     }
-    json += "]";
+    json += F("]");
     WiFi.scanDelete();
     return json;
 }
@@ -609,9 +609,9 @@ String WebPortal::getTimezoneOptions() {
     
     String opts = "";
     for (const char* tz : zones) {
-        opts += "<option value='" + String(tz) + "'";
-        if (String(tz) == String(configMgr->config.timezone)) opts += " selected";
-        opts += ">" + String(tz) + "</option>";
+        opts += String(F("<option value='")) + String(tz) + "'";
+        if (String(tz) == String(configMgr->config.timezone)) opts += F(" selected");
+        opts += String(F(">")) + String(tz) + "</option>";
     }
     return opts;
 }
@@ -670,13 +670,13 @@ String WebPortal::generateScheduleHTML() {
     html += F("'></div>");
     
     html += F("<div class='sw-label'><label class='switch'><input type='checkbox' name='scr_sleep'");
-    if (configMgr->config.screenSleepEnabled) html += " checked";
+    if (configMgr->config.screenSleepEnabled) html += F(" checked");
     html += F("><span class='slider'></span></label><span>Activar horario automático</span></div>");
     
     html += F("<div class='preview'>Pantalla encendida de <strong>");
-    html += String(configMgr->config.screenOnHour) + ":" + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute);
+    html += String(configMgr->config.screenOnHour) + String(F(":")) + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute);
     html += F("</strong> a <strong>");
-    html += String(configMgr->config.screenOffHour) + ":" + (configMgr->config.screenOffMinute < 10 ? "0" : "") + String(configMgr->config.screenOffMinute);
+    html += String(configMgr->config.screenOffHour) + String(F(":")) + (configMgr->config.screenOffMinute < 10 ? "0" : "") + String(configMgr->config.screenOffMinute);
     html += F("</strong></div>");
     
     html += F("<button type='submit'>💾 Guardar Horario</button>"

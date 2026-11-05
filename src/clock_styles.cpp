@@ -80,16 +80,16 @@ static void buildTimeString(char *out, const struct tm *t, const AppConfig &cfg,
     uint8_t h = displayHour(t, cfg);
     char h0 = (cfg.is12hStyle && h < 10) ? ' ' : char('0' + h / 10);
     if (withSeconds) {
-        sprintf(out, "%c%d:%02d:%02d", h0, h % 10, t->tm_min, t->tm_sec);
+        sprintf_P(out, PSTR("%c%d:%02d:%02d"), h0, h % 10, t->tm_min, t->tm_sec);
     } else {
-        sprintf(out, "%c%d:%02d", h0, h % 10, t->tm_min);
+        sprintf_P(out, PSTR("%c%d:%02d"), h0, h % 10, t->tm_min);
     }
 }
 
 static String shortDate(const struct tm *t) {
     char buf[8];
-    sprintf(buf, "%02d", t->tm_mday % 100);
-    return WDAY_NAMES[t->tm_wday] + " " + String(buf) + " " + MONTH_NAMES[t->tm_mon];
+    sprintf_P(buf, PSTR("%02d"), t->tm_mday % 100);
+    return WDAY_NAMES[t->tm_wday] + String(F(" ")) + String(buf) + String(F(" ")) + MONTH_NAMES[t->tm_mon];
 }
 
 // Estrella de 4 puntas (brillo estilo anime)
@@ -339,8 +339,8 @@ static void headerClassic(MiniGrafx &g, const struct tm *t, const AppConfig &cfg
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setFont(fontRounded14);
     g.setColor(C_FG);
-    g.drawString(120, 6, WDAY_NAMES[t->tm_wday] + " " + MONTH_NAMES[t->tm_mon] + " " +
-                 String(t->tm_mday) + " " + String(1900 + t->tm_year));
+    g.drawString(120, 6, WDAY_NAMES[t->tm_wday] + String(F(" ")) + MONTH_NAMES[t->tm_mon] + String(F(" ")) +
+                 String(t->tm_mday) + String(F(" ")) + String(1900 + t->tm_year));
     g.setFont(fontRounded36);
     buildTimeString(buf, t, cfg, !cfg.isHHMM);
     g.drawString(120, 20, buf);
@@ -357,7 +357,7 @@ static void fullClassic(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, 
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setFont(fontRounded14);
     g.setColor(C_ACC);
-    g.drawString(120, 70, shortDate(t) + " " + String(1900 + t->tm_year));
+    g.drawString(120, 70, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year));
     g.setFont(fontRounded36);
     g.setColor(C_FG);
     buildTimeString(buf, t, cfg, !cfg.isHHMM);
@@ -392,10 +392,10 @@ static void headerRetro(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) 
     g.setFont(ArialMT_Plain_10);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
     g.setColor(C_FG);
-    g.drawString(6, 2, shortDate(t) + " " + String(1900 + t->tm_year));
+    g.drawString(6, 2, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year));
     if (cfg.is12hStyle) {
-        g.setColor(t->tm_hour < 12 ? C_ACC : C_SEC);  g.drawString(150, 2, "AM");
-        g.setColor(t->tm_hour >= 12 ? C_ACC : C_SEC); g.drawString(170, 2, "PM");
+        g.setColor(t->tm_hour < 12 ? C_ACC : C_SEC);  g.drawString(150, 2, F("AM"));
+        g.setColor(t->tm_hour >= 12 ? C_ACC : C_SEC); g.drawString(170, 2, F("PM"));
     }
     buildTimeString(buf, t, cfg, secs);
     int16_t w = secs ? 21 : 30;
@@ -426,31 +426,31 @@ static void fullRetro(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
 
     // Indicadores AM/PM y 24H
     if (cfg.is12hStyle) {
-        g.setColor(t->tm_hour < 12 ? C_FG : C_SEC);  g.drawString(26, 62, "AM");
-        g.setColor(t->tm_hour >= 12 ? C_FG : C_SEC); g.drawString(54, 62, "PM");
+        g.setColor(t->tm_hour < 12 ? C_FG : C_SEC);  g.drawString(26, 62, F("AM"));
+        g.setColor(t->tm_hour >= 12 ? C_FG : C_SEC); g.drawString(54, 62, F("PM"));
     } else {
-        g.setColor(C_FG); g.drawString(30, 62, "24H");
+        g.setColor(C_FG); g.drawString(30, 62, F("24H"));
     }
 
     buildTimeString(buf, t, cfg, false);
     drawSegString(g, buf, 120, 78, 40, 76, 7, 6, C_FG, C_SEC, SEG_BLOCK, t->tm_sec % 2 == 0);
 
     // Segundos en pequeno, abajo a la derecha del panel
-    sprintf(buf, "%02d", t->tm_sec);
+    sprintf_P(buf, PSTR("%02d"), t->tm_sec);
     drawSegString(g, buf, 196, 160, 12, 20, 3, 3, C_ACC, C_NONE, SEG_BLOCK, true);
 
     // Fecha en 7 segmentos: DD-MM
-    sprintf(buf, "%02d-%02d", t->tm_mday, t->tm_mon + 1);
+    sprintf_P(buf, PSTR("%02d-%02d"), t->tm_mday, t->tm_mon + 1);
     drawSegString(g, buf, 120, 200, 20, 36, 4, 4, C_ACC, C_NONE, SEG_BLOCK, true);
 
     g.setFont(ArialMT_Plain_16);
     g.setColor(C_FG);
-    g.drawString(120, 252, ex.temperature + "  " + ex.location);
+    g.drawString(120, 252, ex.temperature + String(F("  ")) + ex.location);
     g.setColor(C_ACC);
     g.drawString(120, 276, ex.description);
     g.setFont(ArialMT_Plain_10);
     g.setColor(C_SEC);
-    g.drawString(120, 302, "-- MODO LCD --");
+    g.drawString(120, 302, F("-- MODO LCD --"));
 }
 
 // =====================================================
@@ -530,7 +530,7 @@ static void fullAnime(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     g.setFont(fontRounded14);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_ACC);
-    g.drawString(120, 30, shortDate(t) + " " + String(1900 + t->tm_year));
+    g.drawString(120, 30, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year));
 
     // Vineta blanca con la hora en digitos redondeados
     g.setColor(C_ACC);
@@ -545,7 +545,7 @@ static void fullAnime(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     g.fillCircle(212, 66, 17);
     g.setColor(C_FG);
     g.drawCircle(212, 66, 17);
-    sprintf(buf, "%02d", s);
+    sprintf_P(buf, PSTR("%02d"), s);
     g.setFont(fontRounded14);
     g.drawString(212, 57, buf);
     if (cfg.is12hStyle) {
@@ -567,7 +567,7 @@ static void fullAnime(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     g.fillTriangle(110, 255, 130, 255, 120, 245);
     g.setColor(C_BG);
     g.setFont(fontRounded14);
-    g.drawString(120, 262, ex.temperature + " - " + ex.description);
+    g.drawString(120, 262, ex.temperature + String(F(" - ")) + ex.description);
     g.setColor(C_BG);   // franja limpia sobre las lineas de velocidad
     g.fillRect(30, 296, 180, 20);
     g.setColor(C_SEC);
@@ -602,16 +602,16 @@ static void fullPixel(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
         g.drawRect(2, 2, 236, 316);
         g.drawRect(3, 3, 234, 314);
         g.fillCircle(14, 14, 3);
-        drawPixelText(g, "PILA", 22, 12, 1, C_ACC);
+        drawPixelText(g, F("PILA"), 22, 12, 1, C_ACC);
     }
 
     // Fila superior: nivel (dia del ano) y vidas
-    sprintf(buf, "NIVEL %d", t->tm_yday + 1);
+    sprintf_P(buf, PSTR("NIVEL %d"), t->tm_yday + 1);
     drawPixelText(g, buf, handheld ? 48 : 10, 10, 2, C_ACC);
     for (uint8_t i = 0; i < 3; i++) drawSprite8(g, SPRITE_HEART, 176 + i * 18, 8, 2, handheld ? C_FG : C_SEC);
 
     // Fecha
-    drawPixelText(g, shortDate(t) + " " + String(1900 + t->tm_year), 120, 40, 3, C_FG, 1);
+    drawPixelText(g, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year), 120, 40, 3, C_FG, 1);
 
     // Hora gigante con sombra
     buildTimeString(buf, t, cfg, false);
@@ -619,7 +619,7 @@ static void fullPixel(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 222, 146, 3, C_ACC, 2);
 
     // Barra de "experiencia": 20 bloques, uno cada 3 segundos
-    sprintf(buf, "SEG %02d", s);
+    sprintf_P(buf, PSTR("SEG %02d"), s);
     drawPixelText(g, buf, 20, 152, 2, C_ACC);
     for (uint8_t i = 0; i < 20; i++) {
         int16_t x = 20 + i * 10;
@@ -651,8 +651,8 @@ static void headerFuture(MiniGrafx &g, const struct tm *t, const AppConfig &cfg)
     g.setFont(ArialMT_Plain_10);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
     g.setColor(C_SEC);
-    sprintf(buf, "%02d.%02d.%04d", t->tm_mday, t->tm_mon + 1, 1900 + t->tm_year);
-    g.drawString(6, 1, "// " + WDAY_NAMES[t->tm_wday] + " " + String(buf));
+    sprintf_P(buf, PSTR("%02d.%02d.%04d"), t->tm_mday, t->tm_mon + 1, 1900 + t->tm_year);
+    g.drawString(6, 1, String(F("// ")) + WDAY_NAMES[t->tm_wday] + String(F(" ")) + String(buf));
     if (cfg.is12hStyle) {
         g.setColor(C_ACC);
         g.drawString(150, 1, t->tm_hour >= 12 ? "[PM]" : "[AM]");
@@ -680,16 +680,16 @@ static void fullFuture(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, c
 
     g.setFont(ArialMT_Plain_10);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
-    g.drawString(10, 8, "SYS.TIME // NTP OK");
+    g.drawString(10, 8, F("SYS.TIME // NTP OK"));
     g.setTextAlignment(TEXT_ALIGN_RIGHT);
-    sprintf(buf, "D%03d", t->tm_yday + 1);
+    sprintf_P(buf, PSTR("D%03d"), t->tm_yday + 1);
     g.drawString(230, 8, buf);
 
     g.setFont(ArialMT_Plain_16);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_FG);
-    sprintf(buf, "%02d.%02d.%04d", t->tm_mday, t->tm_mon + 1, 1900 + t->tm_year);
-    g.drawString(cx, 28, WDAY_NAMES[t->tm_wday] + "  " + String(buf));
+    sprintf_P(buf, PSTR("%02d.%02d.%04d"), t->tm_mday, t->tm_mon + 1, 1900 + t->tm_year);
+    g.drawString(cx, 28, WDAY_NAMES[t->tm_wday] + String(F("  ")) + String(buf));
 
     // Anillo de 60 marcas: las transcurridas en magenta
     for (uint8_t i = 0; i < 60; i++) {
@@ -713,7 +713,7 @@ static void fullFuture(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, c
     buildTimeString(buf, t, cfg, false);
     drawSegString(g, buf, cx, cy - 28, 28, 52, 5, 5, C_FG, C_NONE, SEG_HEX, s % 2 == 0);
 
-    sprintf(buf, "%02d", s);
+    sprintf_P(buf, PSTR("%02d"), s);
     drawSegString(g, buf, cx, cy + 34, 12, 20, 3, 3, C_ACC, C_NONE, SEG_HEX, true);
 
     // Paneles de datos
@@ -722,8 +722,8 @@ static void fullFuture(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, c
     drawCornerBrackets(g, 124, 258, 108, 48, 6);
     g.setFont(ArialMT_Plain_10);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
-    g.drawString(14, 262, "TEMP");
-    g.drawString(130, 262, "LOC");
+    g.drawString(14, 262, F("TEMP"));
+    g.drawString(130, 262, F("LOC"));
     g.setFont(ArialMT_Plain_16);
     g.setColor(C_FG);
     g.drawString(14, 280, ex.temperature);
@@ -796,7 +796,7 @@ static void drawBlockText(MiniGrafx &g, const String &raw, int16_t cx, int16_t y
 static String uptimeText(uint32_t secs) {
     char buf[24];
     uint32_t d = secs / 86400, h = (secs / 3600) % 24, m = (secs / 60) % 60;
-    sprintf(buf, "UP %luD %02lu:%02lu", (unsigned long)d, (unsigned long)h, (unsigned long)m);
+    sprintf_P(buf, PSTR("UP %luD %02lu:%02lu"), (unsigned long)d, (unsigned long)h, (unsigned long)m);
     return String(buf);
 }
 
@@ -852,7 +852,7 @@ static void fullAnalog(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, c
     g.setFont(fontRounded14);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_SEC);
-    g.drawString(cx, 6, shortDate(t) + " " + String(1900 + t->tm_year));
+    g.drawString(cx, 6, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year));
 
     // Numeros de las horas
     g.setFont(ArialMT_Plain_16);
@@ -868,7 +868,7 @@ static void fullAnalog(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, c
     g.setColor(C_ACC);
     g.drawString(cx + 50, cy - 7, String(t->tm_mday));
     g.setColor(C_SEC);
-    g.drawString(cx, cy + 34, "TIMEDESK");
+    g.drawString(cx, cy + 34, F("TIMEDESK"));
 
     drawDial(g, cx, cy, r, t, true);
 
@@ -877,7 +877,7 @@ static void fullAnalog(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, c
     buildTimeString(buf, t, cfg, true);
     g.drawString(cx, 262, String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? " PM" : " AM") : ""));
     g.setColor(C_SEC);
-    g.drawString(cx, 286, ex.temperature + "  " + ex.description);
+    g.drawString(cx, 286, ex.temperature + String(F("  ")) + ex.description);
 }
 
 // =====================================================
@@ -907,7 +907,7 @@ static void headerMono(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
     g.setColor(C_FG);
     for (int16_t yy = 2; yy <= 12; yy += 2) g.drawHorizontalLine(0, yy, 190);
     g.setFont(ArialMT_Plain_10);
-    String title = "TimeDesk - " + shortDate(t);
+    String title = String(F("TimeDesk - ")) + shortDate(t);
     uint16_t tw = g.getStringWidth(title.c_str(), title.length()) + 12;
     g.setColor(C_BG); g.fillRect(95 - tw / 2, 0, tw, 15);
     g.setColor(C_FG); g.setTextAlignment(TEXT_ALIGN_CENTER); g.drawString(95, 1, title);
@@ -927,8 +927,8 @@ static void fullMono(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, con
     g.drawLine(12, 9, 12, 6); g.drawLine(12, 9, 14, 10);
     g.setFont(ArialMT_Plain_10);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
-    g.drawString(24, 3, "Archivo  Edicion  Ver  Hora");
-    sprintf(buf, "%02d:%02d", (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
+    g.drawString(24, 3, F("Archivo  Edicion  Ver  Hora"));
+    sprintf_P(buf, PSTR("%02d:%02d"), (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
     g.setTextAlignment(TEXT_ALIGN_RIGHT);
     g.drawString(235, 3, buf);
 
@@ -944,13 +944,13 @@ static void fullMono(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, con
     g.setFont(ArialMT_Plain_16);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_FG);
-    g.drawString(119, 156, shortDate(t) + " " + String(1900 + t->tm_year));
+    g.drawString(119, 156, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year));
 
     // Ventana del tiempo
     drawMonoWindow(g, 34, 218, 184, 84, "Tiempo");
     g.setColor(C_FG);
     g.setFont(ArialMT_Plain_16);
-    g.drawString(126, 242, ex.temperature + "  " + ex.location);
+    g.drawString(126, 242, ex.temperature + String(F("  ")) + ex.location);
     g.setFont(ArialMT_Plain_10);
     g.drawStringMaxWidth(126, 264, 170, ex.description);
 }
@@ -988,7 +988,7 @@ static void headerDesktop(MiniGrafx &g, const struct tm *t, const AppConfig &cfg
     g.setFont(ArialMT_Plain_10);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
     g.setColor(C_FG);
-    g.drawString(7, 3, "Reloj - " + shortDate(t));
+    g.drawString(7, 3, String(F("Reloj - ")) + shortDate(t));
     g.setFont(fontRounded36);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_ACC);
@@ -1016,7 +1016,7 @@ static void fullDesktop(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, 
     g.drawString(120, wy + 41, buf);
 
     g.setFont(ArialMT_Plain_16);
-    g.drawString(120, wy + 104, shortDate(t) + " " + String(1900 + t->tm_year) +
+    g.drawString(120, wy + 104, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year) +
                  (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
 
     // Barra de progreso de bloques (segundos)
@@ -1041,7 +1041,7 @@ static void fullDesktop(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, 
     g.setColor(C_FG);
     g.fillCircle(30, 232, 9); g.fillCircle(42, 228, 12); g.fillCircle(54, 234, 8); g.fillRect(26, 234, 32, 8);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
-    g.drawString(14, 246, ex.temperature + "  " + ex.location);
+    g.drawString(14, 246, ex.temperature + String(F("  ")) + ex.location);
     g.drawStringMaxWidth(14, 260, 210, ex.description);
 
     // Barra de tareas con boton de menu y bandeja con la hora
@@ -1052,10 +1052,10 @@ static void fullDesktop(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, 
     drawBevel(g, 3, 298, 62, 20, C_FG, C_ACC);
     g.setColor(C_ACC);
     g.drawCircle(14, 308, 5); g.drawLine(14, 308, 14, 305); g.drawLine(14, 308, 16, 309);
-    g.drawString(24, 302, "Menu");
-    g.drawString(25, 302, "Menu");   // negrita simulada
+    g.drawString(24, 302, F("Menu"));
+    g.drawString(25, 302, F("Menu"));   // negrita simulada
     drawBevel(g, 176, 298, 61, 20, C_FG, C_ACC, true, 1);
-    sprintf(buf, "%02d:%02d", (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
+    sprintf_P(buf, PSTR("%02d:%02d"), (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.drawString(206, 302, buf);
 }
@@ -1079,7 +1079,7 @@ static void fullTerminal(MiniGrafx &g, const struct tm *t, const AppConfig &cfg,
 
     termPrompt(g, 6, "date");
     strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S %Z", t);
-    drawPixelText(g, WDAY_NAMES[t->tm_wday] + " " + String(buf), 6, 20, 2, C_FG, 0, C_NONE, 228);
+    drawPixelText(g, WDAY_NAMES[t->tm_wday] + String(F(" ")) + String(buf), 6, 20, 2, C_FG, 0, C_NONE, 228);
 
     termPrompt(g, 40, "clock --big");
     buildTimeString(buf, t, cfg, false);
@@ -1087,18 +1087,18 @@ static void fullTerminal(MiniGrafx &g, const struct tm *t, const AppConfig &cfg,
     if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 234, 98, 2, C_ACC, 2);
     String bar = "[";
     for (uint8_t i = 0; i < 20; i++) bar += (i * 3 <= t->tm_sec) ? '#' : '.';
-    sprintf(buf, "] %02dS", t->tm_sec);
+    sprintf_P(buf, PSTR("] %02dS"), t->tm_sec);
     drawPixelText(g, bar + buf, 6, 116, 2, C_FG);
 
     termPrompt(g, 140, "uptime");
-    drawPixelText(g, uptimeText(ex.uptimeSec) + "  MEM " + String(ex.freeHeap) + "B", 6, 154, 2, C_FG, 0, C_NONE, 228);
+    drawPixelText(g, uptimeText(ex.uptimeSec) + String(F("  MEM ")) + String(ex.freeHeap) + "B", 6, 154, 2, C_FG, 0, C_NONE, 228);
 
     termPrompt(g, 174, "weather");
-    drawPixelText(g, ex.temperature + " " + ex.location, 6, 188, 2, C_FG, 0, C_NONE, 228);
+    drawPixelText(g, ex.temperature + String(F(" ")) + ex.location, 6, 188, 2, C_FG, 0, C_NONE, 228);
     drawPixelText(g, ex.description, 6, 202, 2, C_FG, 0, C_NONE, 228);
 
     termPrompt(g, 222, "uname -a");
-    drawPixelText(g, "TIMEDESK ESP8266 XTENSA", 6, 236, 2, C_FG, 0, C_NONE, 228);
+    drawPixelText(g, F("TIMEDESK ESP8266 XTENSA"), 6, 236, 2, C_FG, 0, C_NONE, 228);
 
     int16_t cx = termPrompt(g, 256, "");
     if (t->tm_sec % 2 == 0) { g.setColor(C_FG); g.fillRect(cx, 255, 8, 12); }
@@ -1106,7 +1106,7 @@ static void fullTerminal(MiniGrafx &g, const struct tm *t, const AppConfig &cfg,
 
 static void headerTerminal(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
     char buf[24];
-    drawPixelText(g, "~$ DATE  " + shortDate(t), 4, 3, 2, C_ACC);
+    drawPixelText(g, String(F("~$ DATE  ")) + shortDate(t), 4, 3, 2, C_ACC);
     buildTimeString(buf, t, cfg, !cfg.isHHMM);
     drawPixelText(g, buf, 8, 18, 6, C_FG);
     int16_t x = 8 + pixelTextWidth(pixelNormalize(buf), 6) + 6;
@@ -1125,20 +1125,20 @@ static void fullMicro(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     g.fillRect(0, 20, 12, 280);
     g.fillRect(228, 20, 12, 280);
 
-    drawPixelText(g, "** TIMEDESK BASIC **", 120, 28, 2, C_FG, 1);
-    drawPixelText(g, "RAM LIBRE " + String(ex.freeHeap) + " BYTES", 120, 42, 2, C_FG, 1);
-    drawPixelText(g, "LISTO.", 16, 62, 2, C_FG);
-    drawPixelText(g, "PRINT HORA$", 16, 76, 2, C_FG);
+    drawPixelText(g, F("** TIMEDESK BASIC **"), 120, 28, 2, C_FG, 1);
+    drawPixelText(g, String(F("RAM LIBRE ")) + String(ex.freeHeap) + " BYTES", 120, 42, 2, C_FG, 1);
+    drawPixelText(g, F("LISTO."), 16, 62, 2, C_FG);
+    drawPixelText(g, F("PRINT HORA$"), 16, 76, 2, C_FG);
     buildTimeString(buf, t, cfg, false);
     drawPixelText(g, buf, 120, 94, 9, C_ACC, 1);
-    sprintf(buf, "SEG %02d", t->tm_sec);
+    sprintf_P(buf, PSTR("SEG %02d"), t->tm_sec);
     drawPixelText(g, String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""), 16, 146, 2, C_SEC);
-    drawPixelText(g, "LISTO.", 16, 166, 2, C_FG);
-    drawPixelText(g, "PRINT TIEMPO$", 16, 180, 2, C_FG);
-    drawPixelText(g, ex.temperature + " " + ex.location, 16, 196, 2, C_ACC, 0, C_NONE, 208);
+    drawPixelText(g, F("LISTO."), 16, 166, 2, C_FG);
+    drawPixelText(g, F("PRINT TIEMPO$"), 16, 180, 2, C_FG);
+    drawPixelText(g, ex.temperature + String(F(" ")) + ex.location, 16, 196, 2, C_ACC, 0, C_NONE, 208);
     drawPixelText(g, ex.description, 16, 210, 2, C_ACC, 0, C_NONE, 208);
-    drawPixelText(g, shortDate(t) + " " + String(1900 + t->tm_year), 16, 224, 2, C_ACC);
-    drawPixelText(g, "LISTO.", 16, 246, 2, C_FG);
+    drawPixelText(g, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year), 16, 224, 2, C_ACC);
+    drawPixelText(g, F("LISTO."), 16, 246, 2, C_FG);
     if (t->tm_sec % 2 == 0) { g.setColor(C_FG); g.fillRect(16, 260, 8, 10); }
 }
 
@@ -1146,7 +1146,7 @@ static void headerMicro(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) 
     char buf[24];
     g.setColor(C_FG);
     g.fillRect(0, 0, 6, 56);
-    drawPixelText(g, "LISTO.  " + shortDate(t), 12, 3, 2, C_FG);
+    drawPixelText(g, String(F("LISTO.  ")) + shortDate(t), 12, 3, 2, C_FG);
     buildTimeString(buf, t, cfg, !cfg.isHHMM);
     drawPixelText(g, buf, 120, 18, 6, C_ACC, 1);
 }
@@ -1176,14 +1176,14 @@ static void fullAdventure(MiniGrafx &g, const struct tm *t, const AppConfig &cfg
     uint8_t s = t->tm_sec;
 
     // Marcador: vida (un corazon cada 6 segundos) y oro (dia del ano)
-    drawPixelText(g, "-VIDA-", 10, 6, 2, C_SEC);
+    drawPixelText(g, F("-VIDA-"), 10, 6, 2, C_SEC);
     drawHearts(g, 10, 20, s / 6 + 1, 10, 1);
     g.setColor(C_ACC);
     g.fillCircle(176, 24, 5);
     g.setColor(C_BG);
     g.drawVerticalLine(176, 21, 7);
-    drawPixelText(g, "ORO", 188, 6, 2, C_ACC);
-    sprintf(buf, "X%03d", t->tm_yday + 1);
+    drawPixelText(g, F("ORO"), 188, 6, 2, C_ACC);
+    sprintf_P(buf, PSTR("X%03d"), t->tm_yday + 1);
     drawPixelText(g, buf, 186, 20, 2, C_FG);
     g.setColor(C_FG);
     g.drawHorizontalLine(6, 34, 228);
@@ -1205,7 +1205,7 @@ static void fullAdventure(MiniGrafx &g, const struct tm *t, const AppConfig &cfg
     bool open = (s % 10) < 5;
     drawSprite8(g, open ? SPRITE_CHEST_OPEN : SPRITE_CHEST_SHUT, 96, 136, 6, C_ACC);
     if (open) drawSparkle(g, 120, 128, (s % 2) ? 8 : 5, C_FG);
-    sprintf(buf, "%02d", s);
+    sprintf_P(buf, PSTR("%02d"), s);
     drawPixelText(g, buf, 120, 190, 2, C_FG, 1);
 
     // Cuadro de dialogo
@@ -1213,10 +1213,10 @@ static void fullAdventure(MiniGrafx &g, const struct tm *t, const AppConfig &cfg
     buildTimeString(buf, t, cfg, false);
     String hora = String(buf);
     hora.trim();
-    drawPixelText(g, "SON LAS " + hora + (cfg.is12hStyle ? (t->tm_hour >= 12 ? " PM." : " AM.") : "."), 20, 224, 2, C_FG);
-    drawPixelText(g, shortDate(t) + " " + String(1900 + t->tm_year), 20, 240, 2, C_FG);
-    drawPixelText(g, "HACE " + ex.temperature + " EN", 20, 256, 2, C_FG, 0, C_NONE, 200);
-    drawPixelText(g, ex.location + ": " + ex.description, 20, 272, 2, C_FG, 0, C_NONE, 200);
+    drawPixelText(g, String(F("SON LAS ")) + hora + (cfg.is12hStyle ? (t->tm_hour >= 12 ? " PM." : " AM.") : "."), 20, 224, 2, C_FG);
+    drawPixelText(g, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year), 20, 240, 2, C_FG);
+    drawPixelText(g, String(F("HACE ")) + ex.temperature + " EN", 20, 256, 2, C_FG, 0, C_NONE, 200);
+    drawPixelText(g, ex.location + String(F(": ")) + ex.description, 20, 272, 2, C_FG, 0, C_NONE, 200);
     if (s % 2 == 0) { g.setColor(C_ACC); g.fillTriangle(212, 290, 222, 290, 217, 297); }
 }
 
@@ -1237,13 +1237,13 @@ static void fullSpeed(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     const int16_t hy = 186, vx = 120;   // horizonte y punto de fuga
 
     // Marcador
-    drawPixelText(g, "TIEMPO", 8, 6, 2, C_ACC);
-    sprintf(buf, "VUELTA %02d/24", t->tm_hour + 1);
+    drawPixelText(g, F("TIEMPO"), 8, 6, 2, C_ACC);
+    sprintf_P(buf, PSTR("VUELTA %02d/24"), t->tm_hour + 1);
     drawPixelText(g, buf, 232, 6, 2, C_ACC, 2);
     buildTimeString(buf, t, cfg, false);
     drawPixelText(g, buf, 114, 24, 10, C_FG, 1, C_SEC, 240, 2);   // cursiva
     if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 232, 66, 2, C_ACC, 2);
-    drawPixelText(g, ex.temperature + "  " + ex.description, 120, 88, 2, C_ACC, 1, C_NONE, 228);
+    drawPixelText(g, ex.temperature + String(F("  ")) + ex.description, 120, 88, 2, C_ACC, 1, C_NONE, 228);
 
     // Sol con franjas
     g.setColor(C_ACC);
@@ -1286,9 +1286,9 @@ static void fullSpeed(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     g.fillRect(2, 280, 66, 38);
     g.setColor(C_SEC);
     g.drawRect(2, 280, 66, 38);
-    sprintf(buf, "%d", 180 + s * 2);
+    sprintf_P(buf, PSTR("%d"), 180 + s * 2);
     drawPixelText(g, buf, 8, 284, 4, C_ACC, 0, C_NONE, 240, 1);
-    drawPixelText(g, "KM/H", 8, 306, 2, C_FG);
+    drawPixelText(g, F("KM/H"), 8, 306, 2, C_FG);
     drawPixelText(g, shortDate(t), 232, 306, 2, C_FG, 2);
 }
 
@@ -1298,7 +1298,7 @@ static void headerSpeed(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) 
         g.setColor(i % 2 ? C_SEC : C_ACC);
         g.drawHorizontalLine(2 + i * 3, 18 + i * 7, 22 - i * 3);
     }
-    drawPixelText(g, "TIEMPO  " + shortDate(t), 30, 3, 2, C_ACC);
+    drawPixelText(g, String(F("TIEMPO  ")) + shortDate(t), 30, 3, 2, C_ACC);
     buildTimeString(buf, t, cfg, !cfg.isHHMM);
     drawPixelText(g, buf, 126, 17, 7, C_FG, 1, C_SEC, 240, 1);
 }
@@ -1322,7 +1322,7 @@ static void fullPlatform(MiniGrafx &g, const struct tm *t, const AppConfig &cfg,
     drawCloud(g, (s * 2 + 10) % 280 - 30, 64, 10);
     drawCloud(g, (s * 2 + 150) % 280 - 30, 44, 8);
 
-    drawPixelText(g, ex.temperature + " " + ex.location, 8, 6, 2, C_FG, 0, C_NONE, 140);
+    drawPixelText(g, ex.temperature + String(F(" ")) + ex.location, 8, 6, 2, C_FG, 0, C_NONE, 140);
     drawPixelText(g, shortDate(t), 232, 6, 2, C_FG, 2);
     drawPixelText(g, ex.description, 8, 20, 2, C_FG, 0, C_NONE, 224);
 
@@ -1337,7 +1337,7 @@ static void fullPlatform(MiniGrafx &g, const struct tm *t, const AppConfig &cfg,
     if (cfg.is12hStyle) drawPixelText(g, t->tm_hour >= 12 ? "PM" : "AM", 232, 142, 2, C_FG, 2);
 
     // Plataforma flotante con los segundos
-    sprintf(buf, "%02d", s);
+    sprintf_P(buf, PSTR("%02d"), s);
     drawBlockText(g, buf, 120, 166, 5, C_ACC, C_FG, C_SEC);
 
     // Estrellas que la mascota va recogiendo
@@ -1595,8 +1595,8 @@ static void fullWeather(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, 
     g.setFont(fontRounded14);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_FG);
-    sprintf(buf, "%02d", t->tm_sec);
-    g.drawString(120, 200, shortDate(t) + "   :" + String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
+    sprintf_P(buf, PSTR("%02d"), t->tm_sec);
+    g.drawString(120, 200, shortDate(t) + String(F("   :")) + String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
     g.setFont(fontRounded36);
     g.setColor(C_SEC); g.drawString(122, 228, ex.temperature);
     g.setColor(C_FG);  g.drawString(120, 226, ex.temperature);
@@ -1660,7 +1660,7 @@ static void fullNight(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     g.setFont(ArialMT_Plain_10);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_ACC);
-    sprintf(buf, "Luna %s %d%%", ex.moonWaxing ? "creciente" : "menguante", (int)lroundf(ex.moonIllumination * 100));
+    sprintf_P(buf, PSTR("Luna %s %d%%"), ex.moonWaxing ? "creciente" : "menguante", (int)lroundf(ex.moonIllumination * 100));
     g.drawString(120, 210, buf);
     g.setFont(fontRounded14);
     g.setColor(C_FG);
@@ -1678,7 +1678,7 @@ static void fullNight(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     }
     g.setFont(ArialMT_Plain_10);
     g.setColor(C_FG);
-    g.drawString(120, 290, ex.temperature + "  " + ex.description);
+    g.drawString(120, 290, ex.temperature + String(F("  ")) + ex.description);
     g.drawString(120, 304, ex.location);
 }
 
@@ -1766,7 +1766,7 @@ static void fullAquarium(MiniGrafx &g, const struct tm *t, const AppConfig &cfg,
     g.drawString(bx, by - 30, buf);
     g.setFont(fontRounded14);
     g.setColor(C_ACC);
-    sprintf(buf, "%02d", s);
+    sprintf_P(buf, PSTR("%02d"), s);
     g.drawString(bx, by + 14, String(buf) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? " PM" : " AM") : ""));
     g.setFont(ArialMT_Plain_10);
     g.setColor(C_FG);
@@ -1782,7 +1782,7 @@ static void fullAquarium(MiniGrafx &g, const struct tm *t, const AppConfig &cfg,
     }
     g.setFont(fontRounded14);
     g.setColor(C_FG);
-    g.drawString(120, 222, ex.temperature + "  " + ex.location);
+    g.drawString(120, 222, ex.temperature + String(F("  ")) + ex.location);
     g.setFont(ArialMT_Plain_10);
     g.drawString(120, 244, ex.description);
 }
@@ -1837,7 +1837,7 @@ static void fullScope(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     g.setFont(ArialMT_Plain_10);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
     g.setColor(C_ACC);
-    g.drawString(10, 3, "CH1  DC  2V/div");
+    g.drawString(10, 3, F("CH1  DC  2V/div"));
     g.setTextAlignment(TEXT_ALIGN_RIGHT);
     g.drawString(230, 3, s % 2 ? "AUTO  TRIG'D" : "AUTO");
 
@@ -1855,11 +1855,11 @@ static void fullScope(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     // Lecturas de medida
     g.setTextAlignment(TEXT_ALIGN_LEFT);
     g.setColor(C_FG);
-    sprintf(buf, "Freq %2d.%d Hz", 1 + s / 12, (s % 12) * 10 / 12);
+    sprintf_P(buf, PSTR("Freq %2d.%d Hz"), 1 + s / 12, (s % 12) * 10 / 12);
     g.drawString(10, 224, buf);
-    sprintf(buf, "Vpp %02d.%02d V", (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
+    sprintf_P(buf, PSTR("Vpp %02d.%02d V"), (cfg.is12hStyle ? (t->tm_hour + 11) % 12 + 1 : t->tm_hour), t->tm_min);
     g.drawString(10, 238, buf);
-    sprintf(buf, "Seg %02d", s);
+    sprintf_P(buf, PSTR("Seg %02d"), s);
     g.setTextAlignment(TEXT_ALIGN_RIGHT);
     g.drawString(230, 224, buf);
     g.drawString(230, 238, shortDate(t));
@@ -1876,9 +1876,9 @@ static void fullScope(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     }
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_SEC);
-    g.drawString(34, 298, "VOLTS");
-    g.drawString(74, 298, "TIME");
-    g.drawString(114, 298, "POS");
+    g.drawString(34, 298, F("VOLTS"));
+    g.drawString(74, 298, F("TIME"));
+    g.drawString(114, 298, F("POS"));
     g.setColor(C_FG);
     g.setTextAlignment(TEXT_ALIGN_LEFT);
     g.drawString(144, 262, ex.temperature);
@@ -1939,10 +1939,10 @@ static void fullNixie(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, co
     g.setFont(fontRounded14);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_FG);
-    g.drawString(120, 20, shortDate(t) + " " + String(1900 + t->tm_year) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
+    g.drawString(120, 20, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year) + (cfg.is12hStyle ? (t->tm_hour >= 12 ? "  PM" : "  AM") : ""));
     g.setFont(ArialMT_Plain_10);
     g.setColor(C_SEC);
-    g.drawString(120, 300, ex.temperature + "  " + ex.description);
+    g.drawString(120, 300, ex.temperature + String(F("  ")) + ex.description);
 }
 
 static void headerNixie(MiniGrafx &g, const struct tm *t, const AppConfig &cfg) {
@@ -2022,7 +2022,7 @@ static void fullFlip(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, con
     g.setFont(fontRounded14);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_FG);
-    g.drawString(120, 24, shortDate(t) + " " + String(1900 + t->tm_year));
+    g.drawString(120, 24, shortDate(t) + String(F(" ")) + String(1900 + t->tm_year));
 
     drawFlipCard(g, 8, 60, 108, 136, hh, flipH ? ohh : nullptr, 5);
     drawFlipCard(g, 124, 60, 108, 136, mm, flipM ? omm : nullptr, 5);
@@ -2037,7 +2037,7 @@ static void fullFlip(MiniGrafx &g, const struct tm *t, const AppConfig &cfg, con
     g.setFont(fontRounded14);
     g.setTextAlignment(TEXT_ALIGN_CENTER);
     g.setColor(C_FG);
-    g.drawString(120, 276, ex.temperature + "  " + ex.location);
+    g.drawString(120, 276, ex.temperature + String(F("  ")) + ex.location);
     g.setFont(ArialMT_Plain_10);
     g.drawString(120, 298, ex.description);
 }
