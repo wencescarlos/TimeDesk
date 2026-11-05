@@ -720,6 +720,9 @@ void WebPortal::handleStatusPage() {
             s += ResetLog::exceptionText(e.exccause);
             snprintf_P(buf, sizeof(buf), PSTR("<br>codigo <code>0x%08lx</code></small>"), (unsigned long)e.epc1);
             s += buf;
+        } else if ((e.reason == REASON_SOFT_WDT_RST || e.reason == REASON_WDT_RST) && e.epc1) {
+            snprintf_P(buf, sizeof(buf), PSTR("<br><small>codigo <code>0x%08lx</code></small>"), (unsigned long)e.epc1);
+            s += buf;
         }
         s += F("</td><td>");
         s += e.version;

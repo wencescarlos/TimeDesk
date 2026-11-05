@@ -50,6 +50,7 @@ const char *GithubUpdater::resultText(GhUpdateResult r) {
         case GH_NETWORK_ERROR: return "Error de red";
         case GH_INSTALL_ERROR: return "Error al instalar";
         case GH_BAD_CONFIG:    return "Repositorio no valido";
+        case GH_INTERRUPTED:   return "Interrumpida";
         default:               return "Nunca comprobado";
     }
 }
@@ -101,10 +102,10 @@ struct RtcUpdateStatus {
     uint32_t result;
     uint32_t lastCheck;
     char latest[16];
-    char message[96];
+    char message[128];
 };
 static const uint32_t RTC_ST_MAGIC = 0x54444B53;    // "TDKS"
-static const uint32_t RTC_ST_OFFSET = 40;           // 31 bloques: 40..70
+static const uint32_t RTC_ST_OFFSET = 40;           // 39 bloques: 40..78
 
 void GithubUpdater::requestBootUpdate() {
     RtcUpdateRequest r = {RTC_REQ_MAGIC, (uint32_t)time(nullptr)};
@@ -143,6 +144,16 @@ void GithubUpdater::loadStatus() {
     st.lastCheck = s.lastCheck;
     st.latestVersion = s.latest;
     st.message = s.message;
+}
+
+// Destino de los pasos que anota el cliente HTTPS (solo hay un actualizador)
+static GithubUpdater *crumbTarget = nullptr;
+
+void GithubUpdater::crumb(const String &step) {
+    st.result = GH_INTERRUPTED;
+    st.message = String(F("Se corto en: ")) + step;
+    saveStatus();
+    Serial.printf_P(PSTR("[OTA-GH] %s\n"), step.c_str());
 }
 
 bool GithubUpdater::isDue(const AppConfig &cfg) {
@@ -211,10 +222,11 @@ struct HttpsGet {
         size_t n = 0;
         bool overflow = false;
         unsigned long last = millis();
-        for (;;) {
+        for (uint16_t i = 0;; i++) {
+            if ((i & 63) == 0) yield();            // cabeceras de 4 KB: no acaparar la CPU
             if (client.available()) {
                 int c = client.read();
-                if (c < 0) continue;
+                if (c < 0) { delay(1); continue; }
                 last = millis();
                 if (c == '\n') break;
                 if (c == '\r') continue;
@@ -249,6 +261,7 @@ struct HttpsGet {
             host[hl] = 0;
             const char *path = slash ? slash : "/";
 
+            if (crumbTarget) crumbTarget->crumb(String(F("salto ")) + hop + F(", conectando con ") + host + heapNote());
             client.stop();                     // libera la conexión del salto anterior
             client.setInsecure();              // la autenticidad la da la firma RSA, no el canal
             client.setTimeout(NET_TIMEOUT_MS);
@@ -262,6 +275,7 @@ struct HttpsGet {
             client.print(host);
             client.print(F("\r\nUser-Agent: TimeDesk-ESP8266\r\nAccept: */*\r\nConnection: close\r\n\r\n"));
 
+            if (crumbTarget) crumbTarget->crumb(String(F("salto ")) + hop + F(", respuesta de ") + host);
             // Línea de estado: "HTTP/1.1 302 Found"
             if (!readLine()) { error = String(F("Salto ")) + hop + F(": ") + error + heapNote(); return false; }
             if (strncmp_P(line, PSTR("HTTP/1."), 7) != 0 || strlen(line) < 12) {
@@ -325,6 +339,7 @@ struct HttpsGet {
             } else {
                 delay(1);
             }
+            yield();
         }
         return got;
     }
@@ -348,6 +363,7 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     reserveBuffers();   // por si no se llamó antes (lo ideal es antes de liberar la pantalla)
     st.lastCheck = checkTime ? checkTime : time(nullptr);
     st.latestVersion = "";
+    crumbTarget = this;
 
     if (!validRepo(cfg.updateRepo)) {
         st.message = F("Escribe el repositorio como usuario/nombre");
@@ -363,6 +379,7 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
 
     // ── 1. Versión publicada ────────────────────────────────────────────────
     {
+        crumb(F("pidiendo version.txt"));
         HttpsGet g;
         if (!g.init(urlBuf, lineBuf) || !g.open(base + F("version.txt"))) {
             st.message = g.error;
@@ -398,49 +415,94 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     // ── 2. Descarga e instalación ───────────────────────────────────────────
     Serial.printf_P(PSTR("[OTA-GH] Nueva version %s -> instalando\n"), st.latestVersion.c_str());
 
+    // La firma se comprueba aquí y no con Update.installSignature(): el core
+    // calcula el SHA-256 de todo el firmware dentro de Update.end() sin ceder
+    // nunca la CPU, y con ~500 KB salta el watchdog (reinicio sin resultado).
+    // Aquí el hash se va calculando mientras llegan los datos.
+    // Formato firmado: <binario> + <firma RSA> + <longitud firma, u32 LE>
     static BearSSL::PublicKey *pubKey = nullptr;
-    static BearSSL::HashSHA256 *hash = nullptr;
     static BearSSL::SigningVerifier *verifier = nullptr;
-    if (signingEnabled()) {
-        if (!pubKey) {
-            pubKey = new BearSSL::PublicKey(OTA_PUBLIC_KEY);
-            hash = new BearSSL::HashSHA256();
-            verifier = new BearSSL::SigningVerifier(pubKey);
-        }
-        Update.installSignature(hash, verifier);   // rechaza binarios sin firma válida
+    const bool signedOnly = signingEnabled();
+    if (signedOnly && !pubKey) {
+        pubKey = new BearSSL::PublicKey(OTA_PUBLIC_KEY);
+        verifier = new BearSSL::SigningVerifier(pubKey);
     }
+    const uint32_t sigLen = signedOnly ? verifier->length() : 0;   // 256 con RSA-2048
+    const uint32_t trailer = signedOnly ? sigLen + 4 : 0;
+    BearSSL::HashSHA256 hash;
+    uint8_t *sigBuf = nullptr;
+    Update.installSignature(nullptr, nullptr);
 
     String error;
     {
+        crumb(F("pidiendo firmware.bin"));
         HttpsGet g;
         if (!g.init(urlBuf, lineBuf) || !g.open(base + F("firmware.bin"))) {
             error = g.error;
         } else if (g.code != 200) {
             error = String(F("firmware.bin: HTTP ")) + g.code + F(" de ") + g.host;
-        } else if (g.length <= 0) {
+        } else if (g.length <= (long)trailer + 16) {
             error = F("Descarga sin tamano conocido");
+        } else if (signedOnly && sigLen == 0) {
+            error = F("Clave publica no valida");
+        } else if (signedOnly && !(sigBuf = (uint8_t *)malloc(trailer))) {
+            error = String(F("Sin memoria para la firma")) + heapNote();
         } else if (!Update.begin(g.length)) {
             error = String(F("Sin espacio: ")) + Update.getErrorString();
         } else {
             Serial.printf_P(PSTR("[OTA-GH] Descargando %ld bytes de %s\n"), g.length, g.host);
+            const uint32_t total = (uint32_t)g.length;
+            const uint32_t payload = total - trailer;     // lo que cubre la firma
+            hash.begin();
             uint8_t buf[1024];
-            long remaining = g.length;
-            while (remaining > 0) {
-                size_t n = g.readBody(buf, remaining < (long)sizeof(buf) ? (size_t)remaining : sizeof(buf));
+            uint32_t done = 0, nextCrumb = 0;
+            while (done < total) {
+                if (done >= nextCrumb) {
+                    crumb(String(F("descargando, ")) + (done / 1024) + F(" de ") + (total / 1024) + F(" KB") + heapNote());
+                    nextCrumb += 32768;
+                }
+                size_t n = g.readBody(buf, total - done < sizeof(buf) ? total - done : sizeof(buf));
                 if (n == 0) break;                            // corte o tiempo agotado
+                if (signedOnly) {
+                    for (size_t i = 0; i < n; ) {            // separa binario y firma
+                        uint32_t pos = done + i;
+                        if (pos < payload) {
+                            size_t k = (payload - pos) < (n - i) ? (payload - pos) : (n - i);
+                            hash.add(buf + i, k);
+                            i += k;
+                        } else {
+                            sigBuf[pos - payload] = buf[i++];
+                        }
+                    }
+                }
                 if (Update.write(buf, n) != n) break;
-                remaining -= n;
+                done += n;
                 yield();
             }
-            if (remaining > 0) {
-                error = String(F("Descarga incompleta: ")) + (g.length - remaining) + F(" de ") + g.length + F(" bytes");
+            if (done < total) {
+                error = String(F("Descarga incompleta: ")) + done + F(" de ") + total + F(" bytes");
                 Update.end();   // incompleta: end() sin argumento la descarta; el firmware actual sigue intacto
-            } else if (!Update.end()) {
-                error = String(F("Verificacion: ")) + Update.getErrorString();   // p.ej. firma no válida
+            } else {
+                bool sigOk = true;
+                if (signedOnly) {
+                    crumb(F("comprobando la firma"));
+                    hash.end();
+                    uint32_t found = sigBuf[sigLen] | (sigBuf[sigLen + 1] << 8) |
+                                     ((uint32_t)sigBuf[sigLen + 2] << 16) | ((uint32_t)sigBuf[sigLen + 3] << 24);
+                    sigOk = found == sigLen && verifier->verify(&hash, sigBuf, sigLen);
+                    yield();
+                }
+                if (!sigOk) {
+                    // Sin Update.end(): no se marca para instalar; al reiniciar sigue el firmware actual
+                    error = F("Verificacion: firma no valida");
+                } else {
+                    crumb(F("activando el firmware nuevo"));
+                    if (!Update.end()) error = String(F("Verificacion: ")) + Update.getErrorString();
+                }
             }
         }
     }
-    Update.installSignature(nullptr, nullptr);   // la subida manual (/update) no exige firma
+    free(sigBuf);
 
     if (error.length() == 0) {
         st.message = String(F("Actualizado a la version ")) + st.latestVersion;

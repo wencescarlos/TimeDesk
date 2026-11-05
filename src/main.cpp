@@ -630,6 +630,10 @@ void runBootUpdate(uint32_t requestedAt) {
     gfx.drawString(120, 220, F("No lo desconectes."));
     gfx.commit();
 
+    // Búferes de la descarga antes de liberar la pantalla (no ocupan su hueco)
+    githubUpdater.setCheckTime(requestedAt);   // aún no hay hora NTP
+    githubUpdater.reserveBuffers();
+    githubUpdater.crumb(F("conectando al WiFi"));
     // El panel conserva la imagen: se libera el framebuffer antes de nada
     gfx.freeBuffer();
     Serial.printf_P(PSTR("[OTA-GH] Arranque de actualizacion (heap %u, bloque %u)\n"),
@@ -640,9 +644,9 @@ void runBootUpdate(uint32_t requestedAt) {
     WiFi.begin(configManager.config.wifiSSID, configManager.config.wifiPassword);
     for (uint8_t i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(500);
 
-    githubUpdater.setCheckTime(requestedAt);   // aún no hay hora NTP
     GhUpdateResult r = githubUpdater.run(configManager.config);   // si instala, reinicia
     githubUpdater.saveStatus();
+    githubUpdater.releaseBuffers();
 
     // Resultado en pantalla y vuelta al funcionamiento normal
     gfx.init();

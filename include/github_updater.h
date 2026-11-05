@@ -24,7 +24,8 @@ enum GhUpdateResult : uint8_t {
     GH_NO_RELEASE,        // el repositorio no tiene Releases publicadas
     GH_NETWORK_ERROR,     // fallo de conexión / HTTP
     GH_INSTALL_ERROR,     // fallo al descargar o verificar firmware.bin
-    GH_BAD_CONFIG         // repositorio mal escrito
+    GH_BAD_CONFIG,        // repositorio mal escrito
+    GH_INTERRUPTED        // el equipo se reinició a mitad (ver el mensaje: último paso)
 };
 
 struct GhUpdateStatus {
@@ -56,9 +57,12 @@ public:
     // se hace la comprobación con toda la memoria libre.
     static void requestBootUpdate();                      // guarda la petición y reinicia
     static bool takeBootUpdateRequest(uint32_t &requestedAt);   // la lee y la borra
-    void setCheckTime(uint32_t t) { checkTime = t; }      // hora de la petición (sin NTP al arrancar)
+    void setCheckTime(uint32_t t) { checkTime = t; st.lastCheck = t; }      // hora de la petición (sin NTP al arrancar)
     void saveStatus();                                    // resultado -> memoria RTC
     void loadStatus();                                    // memoria RTC -> resultado
+    // Deja en la memoria RTC el paso en curso: si el equipo se reinicia a
+    // mitad, el siguiente arranque muestra en /update dónde se quedó.
+    void crumb(const String &step);
 
     const GhUpdateStatus &status() const { return st; }
     static bool signingEnabled();
