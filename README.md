@@ -192,7 +192,7 @@ Pantallas, en orden:
 
 ## Actualización automática desde GitHub
 
-Una vez al día (por defecto entre las 04:00 y las 04:45) el dispositivo lee `version.txt` de la **última Release** del repositorio. Si la versión es mayor que la instalada, descarga `firmware.bin`, lo instala y se reinicia. En `/update` puedes activarla o desactivarla, cambiar el repositorio y la hora, y pulsar **Buscar ahora**.
+Una vez al día (por defecto entre las 04:00 y las 04:45) el dispositivo lee `version.txt` de la **última Release** del repositorio. La comprobación se hace en un arranque dedicado: el reloj se reinicia, comprueba (e instala si hace falta) antes de cargar el portal y el resto, con toda la memoria libre, y vuelve a reiniciarse. Una conexión HTTPS necesita unos 27 KB, que con todo en marcha no siempre están disponibles. Si la versión es mayor que la instalada, descarga `firmware.bin`, lo instala y se reinicia. En `/update` puedes activarla o desactivarla, cambiar el repositorio y la hora, y pulsar **Buscar ahora**.
 
 El repositorio debe ser público: el dispositivo descarga sin credenciales.
 

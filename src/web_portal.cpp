@@ -957,7 +957,7 @@ void WebPortal::streamUpdatePage() {
         "function ghSave(){ghPost('/auto-update-save','auto='+($('ga').checked?1:0)+'&repo='+encodeURIComponent($('grp').value.trim())+'&hour='+$('gh').value)"
         ".then(function(d){$('gm').textContent=d.ok?'Guardado ✔':'Error: '+d.error;ghLoad()}).catch(function(){$('gm').textContent='Error al guardar'})}"
         "function ghCheck(){var t0=Date.now(),prev=null;$('gc').disabled=true;"
-        "$('gm').textContent='Comprobando… si hay una versión nueva se instalará y el dispositivo se reiniciará (1-2 min).';"
+        "$('gm').textContent='El reloj se reinicia para comprobarlo con toda la memoria libre; si hay versión nueva la instala (1-2 min).';"
         "ghLoad().then(function(d){prev=d.last_check}).catch(function(){}).then(function(){return ghPost('/update-check','')})"
         ".then(function(){var iv=setInterval(function(){ghLoad().then(function(d){"
         "if(d.last_check&&d.last_check!==prev){clearInterval(iv);$('gc').disabled=false;"
