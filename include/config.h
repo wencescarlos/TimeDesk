@@ -33,9 +33,7 @@
 
 #define MAX_FORECASTS         12
 #define CLOCK_STYLE_MAX       20      // Numero de estilos de reloj (ver clock_styles.h)
-#define DEFAULT_UPDATE_REPO   "wencescarlos/TimeDesk"
 #define DEFAULT_WEB_USER      "admin"
-#define DEFAULT_UPDATE_HOUR   4       // 04:xx, con la pantalla normalmente apagada
 #define WEB_SERVER_PORT       80
 
 // =====================================================
@@ -109,10 +107,6 @@ struct AppConfig {
     // Arrancar en la pantalla de reloj a pantalla completa
     bool startOnClock;
     
-    // Actualización automática desde GitHub Releases
-    bool autoUpdate;
-    char updateRepo[64];      // "usuario/repositorio"
-    uint8_t updateHour;       // hora local de la comprobación diaria
     
     // Acceso al portal web (vacío = sin contraseña). No se pide en modo AP,
     // que ya está protegido por la contraseña de la red de configuración.

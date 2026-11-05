@@ -95,23 +95,29 @@ function toast(m,e){var t=$('toast');t.textContent=m;t.className='show'+(e?' err
 function post(q,ok){return fetch('/clock-save',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:q})
  .then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(){toast(ok)}).catch(function(){toast('Error al guardar',1)})}
 function mark(){for(var i in cards)cards[i].classList.toggle('on',+i==cur)}
-// Las vistas previas se piden de una en una: el ESP8266 atiende peticiones de forma secuencial
-function load(i,front){if(queue.indexOf(i)<0){front?queue.unshift(i):queue.push(i)}next()}
+// Las vistas previas se piden de una en una (el ESP8266 atiende las peticiones
+// de forma secuencial y, mientras genera una, el reloj de la pantalla se para)
+// y solo las que están a la vista: así navegar por la página no lo ralentiza.
+function load(i,front,fresh){if(queue.indexOf(i)<0){front?queue.unshift(i):queue.push(i)}cards[i]._fresh=fresh;next()}
 function next(){if(busy||!queue.length)return;busy=true;var i=queue.shift(),pv=cards[i].querySelector('.pv'),img=new Image();
- img.onload=function(){pv.innerHTML='';pv.appendChild(img);busy=false;next()};
- img.onerror=function(){pv.innerHTML='<span>Vista previa no disponible</span>';busy=false;next()};
- img.alt=S[i][0];img.src='/clock-preview.bmp?s='+i+'&t='+Date.now()}
+ img.onload=function(){pv.innerHTML='';pv.appendChild(img);cards[i]._ok=1;setTimeout(function(){busy=false;next()},150)};
+ img.onerror=function(){pv.innerHTML='<span>Vista previa no disponible</span>';setTimeout(function(){busy=false;next()},500)};
+ img.alt=S[i][0];img.src='/clock-preview.bmp?s='+i+(cards[i]._fresh?'&t='+Date.now():'')}
 G.forEach(function(g){var h=document.createElement('h3');h.textContent=g[0];$('groups').appendChild(h);
  var grid=document.createElement('div');grid.className='grid';$('groups').appendChild(grid);
- g[1].forEach(function(i){var b=document.createElement('button');b.type='button';b.className='st';
+ g[1].forEach(function(i){var b=document.createElement('button');b.type='button';b.className='st';b._i=i;
   b.innerHTML="<div class='pv'><span>Cargando…</span></div><span class='tag'>&#10004; Activo</span><b></b><small></small>";
   b.querySelector('b').textContent=S[i][0];b.querySelector('small').textContent=S[i][1];
   b.onclick=function(){cur=i;mark();post('style='+i,'Estilo "'+S[i][0]+'" aplicado')};
   grid.appendChild(b);cards[i]=b})});
 mark();
-load(cur);G.forEach(function(g){g[1].forEach(function(i){load(i)})});
-// Refresca la vista previa del estilo activo cada 20 s (la hora avanza)
-setInterval(function(){load(cur,true)},20000);
+load(cur,true,true);
+if('IntersectionObserver' in window){var io=new IntersectionObserver(function(es){es.forEach(function(e){
+  if(e.isIntersecting){io.unobserve(e.target);if(!e.target._ok)load(e.target._i)}})},{rootMargin:'100px'});
+ for(var k in cards)io.observe(cards[k])}
+else{G.forEach(function(g){g[1].forEach(function(i){load(i)})})}
+// Refresca la vista previa del estilo activo cada minuto, solo con la página a la vista
+setInterval(function(){if(!document.hidden)load(cur,true,true)},60000);
 var st=$('start'),br=$('br'),bv=$('brv');
 st.checked=typeof START!='undefined'&&START==1;br.value=typeof BR=='number'?BR:100;bv.textContent=br.value+'%';
 st.onchange=function(){post('start_clock='+(st.checked?1:0),st.checked?'Arrancará en el reloj':'Arrancará en la pantalla principal')};

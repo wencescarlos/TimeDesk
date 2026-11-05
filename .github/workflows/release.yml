@@ -1,6 +1,5 @@
-# Compila el firmware y lo publica como GitHub Release.
-# Los dispositivos con la actualización automática activada descargan
-# version.txt y firmware.bin de la última Release una vez al día.
+# Compila el firmware y lo publica como GitHub Release (firmware.bin), listo
+# para instalarlo desde el portal del reloj: Actualización OTA -> subir .bin.
 #
 # Cómo publicar una versión:
 #   1. Sube la versión en include/version.h (p.ej. 1.2.0)
@@ -41,32 +40,17 @@ jobs:
           [ -n "$V" ] || { echo "::error::No se encontró FIRMWARE_VERSION en include/version.h"; exit 1; }
           echo "version=$V" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$V" ]; then
-            echo "::error::El tag $GITHUB_REF_NAME no coincide con version.h (v$V). Los dispositivos comparan con version.h."
+            echo "::error::El tag $GITHUB_REF_NAME no coincide con version.h (v$V)."
             exit 1
           fi
 
       - name: Compilar
         run: pio run -e nodemcuv2
 
-      - name: Preparar ficheros (y firmar si hay clave)
-        env:
-          OTA_SIGNING_KEY: ${{ secrets.OTA_SIGNING_KEY }}
+      - name: Preparar ficheros
         run: |
           mkdir dist
           cp .pio/build/nodemcuv2/firmware.bin dist/firmware.bin
-          if [ -n "$OTA_SIGNING_KEY" ]; then
-            umask 077
-            printf '%s\n' "$OTA_SIGNING_KEY" > "$RUNNER_TEMP/ota.key"
-            python3 tools/sign_firmware.py "$RUNNER_TEMP/ota.key" dist/firmware.bin
-            rm -f "$RUNNER_TEMP/ota.key"
-          else
-            echo "::warning::Sin secreto OTA_SIGNING_KEY: firmware.bin se publica sin firmar"
-            if grep -q "BEGIN PUBLIC KEY" include/ota_public_key.h; then
-              echo "::error::ota_public_key.h tiene clave pero falta el secreto OTA_SIGNING_KEY: los dispositivos rechazarían este firmware"
-              exit 1
-            fi
-          fi
-          printf '%s' "${{ steps.ver.outputs.version }}" > dist/version.txt
           ls -l dist
 
       - name: Publicar Release
@@ -76,6 +60,4 @@ jobs:
           name: TimeDesk v${{ steps.ver.outputs.version }}
           generate_release_notes: true
           make_latest: true
-          files: |
-            dist/firmware.bin
-            dist/version.txt
+          files: dist/firmware.bin

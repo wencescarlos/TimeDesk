@@ -11,7 +11,6 @@
 #include <ESP8266mDNS.h>
 #include "config.h"
 #include "config_manager.h"
-#include "github_updater.h"
 #include <functional>
 
 class WebPortal {
@@ -25,8 +24,6 @@ public:
     bool isAPMode();
     bool shouldRestart();
     bool consumeShowClockRequest();   // true una vez si la web pidio mostrar el reloj
-    bool consumeUpdateCheckRequest(); // true una vez si la web pidio buscar actualizaciones
-    void setUpdater(GithubUpdater *u) { updater = u; }
 
     // Vistas previas de /clock: render(estilo, paleta) dibuja el estilo en el
     // framebuffer y rellena su paleta; pixel(x, y) lee el índice de color.
@@ -46,8 +43,6 @@ private:
     bool restartRequested;
     bool uploadAuthorized = false;   // la subida de firmware en curso tiene permiso
     bool showClockRequested;
-    bool updateCheckRequested = false;
-    GithubUpdater *updater = nullptr;
     PreviewRenderFn previewRender;
     PreviewPixelFn previewPixel;
     
@@ -69,9 +64,6 @@ private:
     // Acceso con contraseña (HTTP Basic). Sin contraseña o en modo AP, abierto.
     bool isAuthorized();
     bool checkAuth();   // si no hay permiso, pide credenciales y devuelve false
-    void handleAutoUpdateSave();
-    void handleUpdateCheck();
-    void handleUpdateInfo();
 
     void streamSchedulePage();
     void streamUpdatePage();

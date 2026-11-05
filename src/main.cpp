@@ -2,11 +2,11 @@
  * TimeDesk - Reloj y estación meteorológica de escritorio
  * 
  * Características:
- * - 6 estilos de reloj cambiables en caliente
+ * - 20 estilos de reloj cambiables en caliente, con vista previa en el portal
  * - Tiempo, pronóstico y fase lunar (OpenWeatherMap)
  * - Portal web de configuración (modo AP + modo estación)
  * - Horario de encendido/apagado por web y menú táctil
- * - Actualización automática diaria desde GitHub Releases
+ * - Actualización del firmware subiendo el .bin desde el portal
  * - Almacenamiento persistente con LittleFS + JSON
  * 
  * Hardware: ESP8266 + ILI9341 TFT 240x320 + XPT2046 Touch
@@ -19,9 +19,6 @@
 #include "time.h"
 #include <SPI.h>
 #include <ESP8266WiFi.h>
-extern "C" {
-#include <user_interface.h>
-}
 
 #include <XPT2046_Touchscreen.h>
 #include "TouchControllerWS.h"
@@ -44,7 +41,6 @@ extern "C" {
 #include "moonphases.h"
 #include "weathericons.h"
 #include "clock_styles.h"
-#include "github_updater.h"
 #include "reset_log.h"
 
 
@@ -73,7 +69,6 @@ TouchControllerWS touchController(&ts);
 
 ConfigManager configManager;
 WebPortal webPortal(&configManager);
-GithubUpdater githubUpdater;
 
 OpenWeatherMapCurrentData currentWeather;
 OpenWeatherMapForecastData forecasts[MAX_FORECASTS];
@@ -135,8 +130,6 @@ void drawAbout();
 void drawSettingsScreen();
 void drawClockScreen();
 void setBacklight(bool on);
-void runGithubUpdate(bool manual);
-void runBootUpdate(uint32_t requestedAt);
 void renderClockPreview(uint8_t style, uint16_t *pal);
 void handleSettingsTouch(TS_Point p);
 void drawSeparator(uint16_t y);
@@ -244,16 +237,7 @@ void setup() {
     clockSetFonts(ArialRoundedMTBold_14, ArialRoundedMTBold_36);
     clockApplyPalette(configManager.config.clockStyle, palette);
     
-    // Arranque dedicado a la actualización: se hace aquí, antes de cargar el
-    // portal, el mDNS y los datos del tiempo, para tener toda la memoria libre
-    uint32_t updateRequestedAt;
-    if (GithubUpdater::takeBootUpdateRequest(updateRequestedAt)) {
-        runBootUpdate(updateRequestedAt);   // termina siempre reiniciando
-    }
-    // El brillo (PWM, temporizador 1) se aplica después de la comprobación:
-    // el arranque de actualización no necesita PWM y así no interfiere
     setBacklight(true);
-    githubUpdater.loadStatus();   // resultado del último intento, para /update y /estado
     
     // Inicializar touch
     Serial.println(F("[Setup] Initializing touch..."));
@@ -360,7 +344,6 @@ void setup() {
     }
     
     // WiFi conectado -> iniciar servidor web en modo STA
-    webPortal.setUpdater(&githubUpdater);
     webPortal.setPreviewSource(renderClockPreview,
                                [](uint16_t x, uint16_t y) -> uint8_t { return gfx.getPixel(x, y); });
     webPortal.beginSTA();
@@ -406,11 +389,6 @@ void loop() {
         timerPress = millis();   // despierta la pantalla si estaba en reposo
     }
     
-    // Actualización desde GitHub: diaria a la hora configurada, o a petición
-    bool manualCheck = webPortal.consumeUpdateCheckRequest();
-    if (manualCheck || githubUpdater.isDue(configManager.config)) {
-        runGithubUpdate(manualCheck);
-    }
     
     gfx.fillBuffer(MINI_BLACK);
     
@@ -609,64 +587,6 @@ void handleSettingsTouch(TS_Point p) {
 // =====================================================
 // PANTALLA DE RELOJ COMPLETA
 // =====================================================
-void runGithubUpdate(bool manual) {
-    // La comprobación se hace en un arranque dedicado (ver runBootUpdate)
-    gfx.fillBuffer(MINI_BLACK);
-    gfx.setFont(ArialRoundedMTBold_14);
-    gfx.setTextAlignment(TEXT_ALIGN_CENTER);
-    gfx.setColor(MINI_YELLOW);
-    gfx.drawString(120, 140, F("Buscando actualizaciones"));
-    gfx.setColor(MINI_WHITE);
-    gfx.drawString(120, 170, F("Reiniciando..."));
-    gfx.commit();
-    GithubUpdater::requestBootUpdate();   // no vuelve
-}
-
-void runBootUpdate(uint32_t requestedAt) {
-    gfx.fillBuffer(MINI_BLACK);
-    gfx.setFont(ArialRoundedMTBold_14);
-    gfx.setTextAlignment(TEXT_ALIGN_CENTER);
-    gfx.setColor(MINI_YELLOW);
-    gfx.drawString(120, 110, F("Buscando actualizaciones"));
-    gfx.drawString(120, 130, F("en GitHub..."));
-    gfx.setColor(MINI_WHITE);
-    gfx.drawString(120, 170, F("Si hay una nueva version"));
-    gfx.drawString(120, 190, F("se instalara y reiniciara."));
-    gfx.drawString(120, 220, F("No lo desconectes."));
-    gfx.commit();
-
-    // Búferes de la descarga antes de liberar la pantalla (no ocupan su hueco)
-    githubUpdater.setCheckTime(requestedAt);   // aún no hay hora NTP
-    githubUpdater.reserveBuffers();
-    githubUpdater.crumb(F("conectando al WiFi"));
-    // CPU a 160 MHz: la criptografía del saludo TLS tarda la mitad. Al acabar
-    // se reinicia siempre, así que el resto del firmware sigue a 80 MHz.
-    system_update_cpu_freq(SYS_CPU_160MHZ);
-    // Brillo al máximo sin PWM durante la actualización
-    digitalWrite(TFT_LED, HIGH);
-    // El panel conserva la imagen: se libera el framebuffer antes de nada
-    gfx.freeBuffer();
-    Serial.printf_P(PSTR("[OTA-GH] Arranque de actualizacion (heap %u, bloque %u)\n"),
-                    ESP.getFreeHeap(), ESP.getMaxFreeBlockSize());
-
-    WiFi.mode(WIFI_STA);
-    WiFi.hostname(WIFI_HOSTNAME);
-    WiFi.begin(configManager.config.wifiSSID, configManager.config.wifiPassword);
-    for (uint8_t i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(500);
-
-    GhUpdateResult r = githubUpdater.run(configManager.config);   // si instala, reinicia
-    githubUpdater.saveStatus();
-    githubUpdater.releaseBuffers();
-
-    // Resultado en pantalla y vuelta al funcionamiento normal
-    gfx.init();
-    String msg = String(GithubUpdater::resultText(r));
-    if (githubUpdater.status().latestVersion.length()) msg += String(F(" (v")) + githubUpdater.status().latestVersion + ")";
-    drawProgress(100, msg);
-    delay(2500);
-    ESP.restart();
-}
-
 ClockExtras buildClockExtras() {
     ClockExtras extras;
     extras.temperature = String(currentWeather.temp, 1) + (configManager.config.isMetric ? "°C" : "°F");
