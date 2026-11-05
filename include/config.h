@@ -53,11 +53,12 @@
 // =====================================================
 // TEXTOS EN ESPAÑOL
 // =====================================================
-const String WDAY_NAMES[] = {"DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"};
-const String MONTH_NAMES[] = {"ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"};
-const String SUN_MOON_TEXT[] = {"Sol", "Salid", "Pues", "Luna", "Edad", "Ilumin"};
-const String MOON_PHASES[] = {"Luna Nueva", "Creciente Iluminante", "Cuarto Creciente", "Gibosa Iluminante",
-                              "Luna Llena", "Gibosa Menguante", "Cuarto Menguante", "Creciente Menguante"};
+// Definidos una sola vez en main.cpp (si se definen aquí, cada fichero que
+// incluye config.h crea su propia copia en RAM)
+extern const String WDAY_NAMES[7];
+extern const String MONTH_NAMES[12];
+extern const String SUN_MOON_TEXT[6];
+extern const String MOON_PHASES[8];
 
 // =====================================================
 // ICONOS DE LUNA (norte/sur, creciente/menguante)

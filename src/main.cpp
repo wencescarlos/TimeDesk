@@ -45,6 +45,15 @@
 
 
 // =====================================================
+// TEXTOS EN ESPAÑOL (declarados en config.h)
+// =====================================================
+const String WDAY_NAMES[] = {"DOM", "LUN", "MAR", "MIE", "JUE", "VIE", "SAB"};
+const String MONTH_NAMES[] = {"ENE", "FEB", "MAR", "ABR", "MAY", "JUN", "JUL", "AGO", "SEP", "OCT", "NOV", "DIC"};
+const String SUN_MOON_TEXT[] = {"Sol", "Salid", "Pues", "Luna", "Edad", "Ilumin"};
+const String MOON_PHASES[] = {"Luna Nueva", "Creciente Iluminante", "Cuarto Creciente", "Gibosa Iluminante",
+                              "Luna Llena", "Gibosa Menguante", "Cuarto Menguante", "Creciente Menguante"};
+
+// =====================================================
 // OBJETOS GLOBALES
 // =====================================================
 ADC_MODE(ADC_VCC);
