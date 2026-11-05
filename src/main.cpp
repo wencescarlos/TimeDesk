@@ -161,7 +161,7 @@ bool connectWifi() {
         return false;
     }
     
-    Serial.printf("[WiFi] Connecting to: %s\n", configManager.config.wifiSSID);
+    Serial.printf_P(PSTR("[WiFi] Connecting to: %s\n"), configManager.config.wifiSSID);
     WiFi.disconnect();
     WiFi.mode(WIFI_STA);
     WiFi.hostname(WIFI_HOSTNAME);
@@ -170,14 +170,14 @@ bool connectWifi() {
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 30) {
         delay(500);
-        drawProgress(min(attempts * 5, 90), "Conectando a '" + String(configManager.config.wifiSSID) + "'...");
+        drawProgress(min(attempts * 5, 90), String(F("Conectando a '")) + String(configManager.config.wifiSSID) + "'...");
         Serial.print(".");
         attempts++;
     }
     
     if (WiFi.status() == WL_CONNECTED) {
-        drawProgress(100, "Conectado: " + WiFi.localIP().toString());
-        Serial.printf("\n[WiFi] Connected! IP: %s\n", WiFi.localIP().toString().c_str());
+        drawProgress(100, String(F("Conectado: ")) + WiFi.localIP().toString());
+        Serial.printf_P(PSTR("\n[WiFi] Connected! IP: %s\n"), WiFi.localIP().toString().c_str());
         return true;
     }
     
@@ -195,20 +195,20 @@ void initTime() {
     gfx.fillBuffer(MINI_BLACK);
     gfx.setFont(ArialRoundedMTBold_14);
     
-    Serial.printf("[Time] Configuring timezone: %s -> %s\n", 
+    Serial.printf_P(PSTR("[Time] Configuring timezone: %s -> %s\n"), 
         configManager.config.timezone, tzString.c_str());
     configTime(tzString.c_str(), NTP_SERVERS);
     
     int i = 1;
     while ((now = time(nullptr)) < NTP_MIN_VALID_EPOCH) {
-        drawProgress(i * 10, "Sincronizando hora...");
+        drawProgress(i * 10, F("Sincronizando hora..."));
         Serial.print(".");
         delay(300);
         yield();
         i++;
         if (i > 30) break;
     }
-    drawProgress(100, "Hora sincronizada");
+    drawProgress(100, F("Hora sincronizada"));
     Serial.println();
     printf("[Time] Local: %s", asctime(localtime(&now)));
 }
@@ -298,12 +298,12 @@ void setup() {
     dividerMiddle = gfx.getWidth() / 2;
     
     // Intentar conectar WiFi
-    drawProgress(10, "Conectando WiFi...");
+    drawProgress(10, F("Conectando WiFi..."));
     
     if (!connectWifi()) {
         // No WiFi configurado o fallo -> modo AP
         Serial.println(F("[Setup] Starting AP mode for configuration..."));
-        drawProgress(50, "Modo configuración AP");
+        drawProgress(50, F("Modo configuración AP"));
         delay(500);
         
         webPortal.beginAP();
@@ -325,7 +325,7 @@ void setup() {
         gfx.setColor(MINI_WHITE);
         gfx.drawString(120, 200, F("Abre el navegador:"));
         gfx.setColor(MINI_YELLOW);
-        gfx.drawString(120, 225, "http://" + webPortal.getLocalIP());
+        gfx.drawString(120, 225, String(F("http://")) + webPortal.getLocalIP());
         gfx.setColor(MINI_WHITE);
         gfx.drawString(120, 270, F("Configura tu WiFi,"));
         gfx.drawString(120, 290, F("API y zona horaria"));
@@ -360,7 +360,7 @@ void setup() {
     screen = configManager.config.startOnClock ? SCR_CLOCK : SCR_MAIN;
     
     Serial.println(F("[Setup] Ready!"));
-    Serial.printf("[Setup] Web config: http://%s/ o http://%s.local/\n", WiFi.localIP().toString().c_str(), MDNS_NAME);
+    Serial.printf_P(PSTR("[Setup] Web config: http://%s/ o http://%s.local/\n"), WiFi.localIP().toString().c_str(), MDNS_NAME);
 }
 
 // =====================================================
@@ -374,7 +374,7 @@ void loop() {
     
     // Comprobar si se pidió reinicio desde la web
     if (webPortal.shouldRestart()) {
-        drawProgress(50, "Reiniciando...");
+        drawProgress(50, F("Reiniciando..."));
         delay(1500);
         ESP.restart();
     }
@@ -499,14 +499,14 @@ void drawSettingsScreen() {
         gfx.setColor(MINI_WHITE);
         gfx.drawString(10, y, labels[i]);
         gfx.setColor(MINI_YELLOW);
-        sprintf(buf, "%02d:%02d", hours[i], mins[i]);
+        sprintf_P(buf, PSTR("%02d:%02d"), hours[i], mins[i]);
         gfx.drawString(100, y, buf);
         gfx.setColor(MINI_BLUE);
         gfx.fillRect(160, y - 4, 30, 20);
         gfx.fillRect(200, y - 4, 30, 20);
         gfx.setColor(MINI_WHITE);
-        gfx.drawString(170, y - 2, "-");
-        gfx.drawString(208, y - 2, "+");
+        gfx.drawString(170, y - 2, F("-"));
+        gfx.drawString(208, y - 2, F("+"));
     }
     
     // Línea separadora
@@ -520,10 +520,10 @@ void drawSettingsScreen() {
     gfx.setColor(MINI_YELLOW);
     gfx.drawString(42, 184, F("http://" MDNS_NAME ".local"));
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(10, 197, "IP: " + WiFi.localIP().toString());
-    gfx.drawString(10, 210, "WiFi: " + String(configManager.config.wifiSSID) + " (" + String(WiFi.RSSI()) + " dBm)");
-    gfx.drawString(10, 223, "Loc: " + String(configManager.config.locationName));
-    gfx.drawString(10, 236, "TZ: " + String(configManager.config.timezone));
+    gfx.drawString(10, 197, String(F("IP: ")) + WiFi.localIP().toString());
+    gfx.drawString(10, 210, String(F("WiFi: ")) + String(configManager.config.wifiSSID) + String(F(" (")) + String(WiFi.RSSI()) + " dBm)");
+    gfx.drawString(10, 223, String(F("Loc: ")) + String(configManager.config.locationName));
+    gfx.drawString(10, 236, String(F("TZ: ")) + String(configManager.config.timezone));
     
     // Botones guardar / volver
     gfx.setFont(ArialRoundedMTBold_14);
@@ -532,12 +532,12 @@ void drawSettingsScreen() {
     gfx.fillRect(10, 252, 100, 26);
     gfx.fillRect(130, 252, 100, 26);
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(60, 255, "GUARDAR");
-    gfx.drawString(180, 255, "VOLVER");
+    gfx.drawString(60, 255, F("GUARDAR"));
+    gfx.drawString(180, 255, F("VOLVER"));
     
     gfx.setFont(ArialMT_Plain_10);
-    gfx.drawString(120, 290, "Actualiza cada " + String(configManager.config.updateIntervalMin) + " min");
-    gfx.drawString(120, 304, "Heap: " + String(ESP.getFreeHeap() / 1024) + "KB");
+    gfx.drawString(120, 290, String(F("Actualiza cada ")) + String(configManager.config.updateIntervalMin) + " min");
+    gfx.drawString(120, 304, String(F("Heap: ")) + String(ESP.getFreeHeap() / 1024) + "KB");
 }
 
 void handleSettingsTouch(TS_Point p) {
@@ -557,7 +557,7 @@ void handleSettingsTouch(TS_Point p) {
         h = (h + (up ? 1 : 23)) % 24;
     } else if (p.y >= 248 && p.y < 282 && p.x < 120) {
         configManager.save();
-        drawProgress(100, "Configuracion guardada!");
+        drawProgress(100, F("Configuracion guardada!"));
         delay(1000);
     } else if (p.y >= 248 && p.y < 282 && p.x >= 120) {
         screen = SCR_MAIN;
@@ -588,7 +588,7 @@ void runGithubUpdate(bool manual) {
     
     if (manual || (r != GH_UP_TO_DATE && r != GH_NO_RELEASE)) {
         String msg = String(GithubUpdater::resultText(r));
-        if (githubUpdater.status().latestVersion.length()) msg += " (v" + githubUpdater.status().latestVersion + ")";
+        if (githubUpdater.status().latestVersion.length()) msg += String(F(" (v")) + githubUpdater.status().latestVersion + ")";
         drawProgress(100, msg);
         delay(2500);
     }
@@ -668,7 +668,7 @@ bool sleep_mode() {
             
             int s = 0;
             do {
-                drawProgress(s, "Entrando en modo reposo...");
+                drawProgress(s, F("Entrando en modo reposo..."));
                 delay(10);
                 yield();
             } while (s++ < 100 && !touchController.isTouched(0));
@@ -706,7 +706,7 @@ void updateData() {
     gfx.fillBuffer(MINI_BLACK);
     gfx.setFont(ArialRoundedMTBold_14);
     
-    drawProgress(30, "Actualizando condiciones...");
+    drawProgress(30, F("Actualizando condiciones..."));
     OpenWeatherMapCurrent *currentWeatherClient = new OpenWeatherMapCurrent();
     currentWeatherClient->setMetric(configManager.config.isMetric);
     currentWeatherClient->setLanguage(configManager.config.owmLanguage);
@@ -714,7 +714,7 @@ void updateData() {
         configManager.config.owmApiKey, configManager.config.owmLocationId);
     delete currentWeatherClient;
     
-    drawProgress(60, "Actualizando pronósticos...");
+    drawProgress(60, F("Actualizando pronósticos..."));
     OpenWeatherMapForecast *forecastClient = new OpenWeatherMapForecast();
     forecastClient->setMetric(configManager.config.isMetric);
     forecastClient->setLanguage(configManager.config.owmLanguage);
@@ -724,14 +724,14 @@ void updateData() {
         configManager.config.owmApiKey, configManager.config.owmLocationId, MAX_FORECASTS);
     delete forecastClient;
     
-    drawProgress(85, "Actualizando astronomía...");
+    drawProgress(85, F("Actualizando astronomía..."));
     SunMoonCalc *smCalc = new SunMoonCalc(now, currentWeather.lat, currentWeather.lon);
     moonData = smCalc->calculateSunAndMoonData().moon;
     delete smCalc;
     
     clockSetWeatherIcon(currentWeather.icon);   // paleta del estilo "Según el tiempo"
-    drawProgress(100, "Actualización completa");
-    Serial.printf("[Update] Done. Free heap: %d bytes\n", ESP.getFreeHeap());
+    drawProgress(100, F("Actualización completa"));
+    Serial.printf_P(PSTR("[Update] Done. Free heap: %d bytes\n"), ESP.getFreeHeap());
     delay(500);
 }
 
@@ -803,9 +803,9 @@ void drawForecastDetail(uint16_t x, uint16_t y, uint8_t dayIndex) {
     struct tm *timeinfo = localtime(&time);
     
     if (configManager.config.is12hStyle) {
-        gfx.drawString(x + 25, y - 15, WDAY_NAMES[timeinfo->tm_wday] + " " + String(make12_24(timeinfo->tm_hour)));
+        gfx.drawString(x + 25, y - 15, WDAY_NAMES[timeinfo->tm_wday] + String(F(" ")) + String(make12_24(timeinfo->tm_hour)));
     } else {
-        gfx.drawString(x + 25, y - 15, WDAY_NAMES[timeinfo->tm_wday] + " " + String(timeinfo->tm_hour) + ":00");
+        gfx.drawString(x + 25, y - 15, WDAY_NAMES[timeinfo->tm_wday] + String(F(" ")) + String(timeinfo->tm_hour) + ":00");
     }
     
     gfx.setColor(MINI_WHITE);
@@ -862,16 +862,16 @@ void drawCurrentWeatherDetail() {
     gfx.setFont(ArialRoundedMTBold_14);
     gfx.setTextAlignment(TEXT_ALIGN_CENTER);
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(120, 2, "Condiciones actuales");
+    gfx.drawString(120, 2, F("Condiciones actuales"));
     
-    drawLabelValue(0, "Temperatura:", String(currentWeather.temp, 1) + (configManager.config.isMetric ? "°C" : "°F"));
-    drawLabelValue(1, "Sensacion:", String(currentWeather.feelsLike, 1) + (configManager.config.isMetric ? "°C" : "°F"));
-    drawLabelValue(2, "Vel. Viento:", String(currentWeather.windSpeed, 1) + (configManager.config.isMetric ? "m/s" : "mph"));
-    drawLabelValue(3, "Dir. Viento:", String(currentWeather.windDeg, 1) + "°");
-    drawLabelValue(4, "Humedad:", String(currentWeather.humidity) + "%");
-    drawLabelValue(5, "Presion:", String(currentWeather.pressure) + "hPa");
-    drawLabelValue(6, "Nubosidad:", String(currentWeather.clouds) + "%");
-    drawLabelValue(7, "Visibilidad:", String(currentWeather.visibility) + "m");
+    drawLabelValue(0, F("Temperatura:"), String(currentWeather.temp, 1) + (configManager.config.isMetric ? "°C" : "°F"));
+    drawLabelValue(1, F("Sensacion:"), String(currentWeather.feelsLike, 1) + (configManager.config.isMetric ? "°C" : "°F"));
+    drawLabelValue(2, F("Vel. Viento:"), String(currentWeather.windSpeed, 1) + (configManager.config.isMetric ? "m/s" : "mph"));
+    drawLabelValue(3, F("Dir. Viento:"), String(currentWeather.windDeg, 1) + "°");
+    drawLabelValue(4, F("Humedad:"), String(currentWeather.humidity) + "%");
+    drawLabelValue(5, F("Presion:"), String(currentWeather.pressure) + "hPa");
+    drawLabelValue(6, F("Nubosidad:"), String(currentWeather.clouds) + "%");
+    drawLabelValue(7, F("Visibilidad:"), String(currentWeather.visibility) + "m");
 }
 
 void drawLabelValue(uint8_t line, String label, String value) {
@@ -910,7 +910,7 @@ void drawForecastTable(uint8_t start) {
     gfx.setFont(ArialRoundedMTBold_14);
     gfx.setTextAlignment(TEXT_ALIGN_CENTER);
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(120, 2, "Pronosticos");
+    gfx.drawString(120, 2, F("Pronosticos"));
     
     String degreeSign = configManager.config.isMetric ? "°C" : "°F";
     
@@ -924,9 +924,9 @@ void drawForecastTable(uint8_t start) {
         struct tm *timeinfo = localtime(&t);
         
         if (configManager.config.is12hStyle) {
-            gfx.drawString(120, y - 15, WDAY_NAMES[timeinfo->tm_wday] + " " + String(make12_24(timeinfo->tm_hour)));
+            gfx.drawString(120, y - 15, WDAY_NAMES[timeinfo->tm_wday] + String(F(" ")) + String(make12_24(timeinfo->tm_hour)));
         } else {
-            gfx.drawString(120, y - 15, WDAY_NAMES[timeinfo->tm_wday] + " " + String(timeinfo->tm_hour) + ":00");
+            gfx.drawString(120, y - 15, WDAY_NAMES[timeinfo->tm_wday] + String(F(" ")) + String(timeinfo->tm_hour) + ":00");
         }
         
         gfx.drawPalettedBitmapFromPgm(0, 5 + y, getMiniMeteoconIconFromProgmem(forecasts[i].icon));
@@ -936,32 +936,32 @@ void drawForecastTable(uint8_t start) {
         gfx.drawString(0, y - 8, forecasts[i].main);
         
         gfx.setColor(MINI_BLUE);
-        gfx.drawString(50, y, "T:");
+        gfx.drawString(50, y, F("T:"));
         gfx.setColor(MINI_WHITE);
         gfx.drawString(70, y, String(forecasts[i].temp, 0) + degreeSign);
         
         gfx.setColor(MINI_BLUE);
-        gfx.drawString(50, y + 15, "H:");
+        gfx.drawString(50, y + 15, F("H:"));
         gfx.setColor(MINI_WHITE);
         gfx.drawString(70, y + 15, String(forecasts[i].humidity) + "%");
         
         gfx.setColor(MINI_BLUE);
-        gfx.drawString(50, y + 30, "P:");
+        gfx.drawString(50, y + 30, F("P:"));
         gfx.setColor(MINI_WHITE);
         gfx.drawString(70, y + 30, String(forecasts[i].rain, 2) + (configManager.config.isMetric ? "mm" : "in"));
         
         gfx.setColor(MINI_BLUE);
-        gfx.drawString(130, y, "Pr:");
+        gfx.drawString(130, y, F("Pr:"));
         gfx.setColor(MINI_WHITE);
         gfx.drawString(170, y, String(forecasts[i].pressure, 0) + "hPa");
         
         gfx.setColor(MINI_BLUE);
-        gfx.drawString(130, y + 15, "V:");
+        gfx.drawString(130, y + 15, F("V:"));
         gfx.setColor(MINI_WHITE);
         gfx.drawString(170, y + 15, String(forecasts[i].windSpeed, 0) + (configManager.config.isMetric ? "m/s" : "mph"));
         
         gfx.setColor(MINI_BLUE);
-        gfx.drawString(130, y + 30, "D:");
+        gfx.drawString(130, y + 30, F("D:"));
         gfx.setColor(MINI_WHITE);
         gfx.drawString(170, y + 30, String(forecasts[i].windDeg, 0) + "°");
     }
@@ -972,18 +972,18 @@ void drawAbout() {
     gfx.setFont(ArialRoundedMTBold_14);
     gfx.setTextAlignment(TEXT_ALIGN_CENTER);
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(120, 2, "Informacion del dispositivo");
+    gfx.drawString(120, 2, F("Informacion del dispositivo"));
     
-    drawLabelValue(0, "Version:", FIRMWARE_VERSION);
-    drawLabelValue(1, "Heap:", String(ESP.getFreeHeap() / 1024) + "kb");
-    drawLabelValue(2, "Flash:", String(ESP.getFlashChipRealSize() / 1024 / 1024) + "MB");
-    drawLabelValue(3, "WiFi:", String(WiFi.RSSI()) + "dB");
-    drawLabelValue(4, "Chip ID:", String(ESP.getChipId()));
-    drawLabelValue(5, "VCC:", String(ESP.getVcc() / 1024.0) + "V");
-    drawLabelValue(6, "CPU:", String(ESP.getCpuFreqMHz()) + "MHz");
-    drawLabelValue(7, "Pantalla OFF:", String(configManager.config.screenOffHour) + ":" + 
+    drawLabelValue(0, F("Version:"), FIRMWARE_VERSION);
+    drawLabelValue(1, F("Heap:"), String(ESP.getFreeHeap() / 1024) + "kb");
+    drawLabelValue(2, F("Flash:"), String(ESP.getFlashChipRealSize() / 1024 / 1024) + "MB");
+    drawLabelValue(3, F("WiFi:"), String(WiFi.RSSI()) + "dB");
+    drawLabelValue(4, F("Chip ID:"), String(ESP.getChipId()));
+    drawLabelValue(5, F("VCC:"), String(ESP.getVcc() / 1024.0) + "V");
+    drawLabelValue(6, F("CPU:"), String(ESP.getCpuFreqMHz()) + "MHz");
+    drawLabelValue(7, F("Pantalla OFF:"), String(configManager.config.screenOffHour) + String(F(":")) + 
         (configManager.config.screenOffMinute < 10 ? "0" : "") + String(configManager.config.screenOffMinute));
-    drawLabelValue(8, "Pantalla ON:", String(configManager.config.screenOnHour) + ":" + 
+    drawLabelValue(8, F("Pantalla ON:"), String(configManager.config.screenOnHour) + String(F(":")) + 
         (configManager.config.screenOnMinute < 10 ? "0" : "") + String(configManager.config.screenOnMinute));
     
     char time_str[15];
@@ -993,31 +993,31 @@ void drawAbout() {
     uint8_t days = millis() / millis_in_day;
     uint8_t hours = (millis() - (days * millis_in_day)) / millis_in_hour;
     uint8_t minutes = (millis() - (days * millis_in_day) - (hours * millis_in_hour)) / millis_in_minute;
-    sprintf(time_str, "%2dd%2dh%2dm", days, hours, minutes);
+    sprintf_P(time_str, PSTR("%2dd%2dh%2dm"), days, hours, minutes);
     
     gfx.setTextAlignment(TEXT_ALIGN_LEFT);
     gfx.setColor(MINI_YELLOW);
-    gfx.drawString(10, 220, "Encendido: ");
+    gfx.drawString(10, 220, F("Encendido: "));
     gfx.setColor(MINI_WHITE);
     gfx.drawStringMaxWidth(110, 220, 130, time_str);
     
     gfx.setColor(MINI_YELLOW);
-    gfx.drawString(10, 240, "IP: ");
+    gfx.drawString(10, 240, F("IP: "));
     gfx.setColor(MINI_WHITE);
     gfx.drawStringMaxWidth(30, 240, 200, WiFi.localIP().toString());
     
     gfx.setColor(MINI_YELLOW);
-    gfx.drawString(10, 260, "Web: ");
+    gfx.drawString(10, 260, F("Web: "));
     gfx.setColor(MINI_BLUE);
     gfx.drawStringMaxWidth(40, 260, 200, F("http://" MDNS_NAME ".local"));
     
     gfx.setColor(MINI_YELLOW);
-    gfx.drawString(10, 280, "Update: ");
+    gfx.drawString(10, 280, F("Update: "));
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(70, 280, "cada " + String(configManager.config.updateIntervalMin) + " min");
+    gfx.drawString(70, 280, String(F("cada ")) + String(configManager.config.updateIntervalMin) + " min");
     
     gfx.setColor(MINI_YELLOW);
-    gfx.drawString(10, 300, "Reset: ");
+    gfx.drawString(10, 300, F("Reset: "));
     gfx.setColor(MINI_WHITE);
     gfx.setFont(ArialMT_Plain_10);
     gfx.drawStringMaxWidth(55, 300, 185, ESP.getResetInfo());
@@ -1037,16 +1037,16 @@ String getTime(time_t *timestamp) {
     if (configManager.config.is12hStyle) {
         sprintf(ampm, hour >= 12 ? "pm" : "am");
         hour = (hour + 11) % 12 + 1;   // 0 -> 12 am, 12 -> 12 pm
-        sprintf(buf, "%2d:%02d %s", hour, timeInfo->tm_min, ampm);
+        sprintf_P(buf, PSTR("%2d:%02d %s"), hour, timeInfo->tm_min, ampm);
     } else {
-        sprintf(buf, "%02d:%02d", hour, timeInfo->tm_min);
+        sprintf_P(buf, PSTR("%02d:%02d"), hour, timeInfo->tm_min);
     }
     return String(buf);
 }
 
 char* make12_24(int hour) {
     static char hr[6];
-    sprintf(hr, "%2d %s", (hour + 11) % 12 + 1, hour >= 12 ? "pm" : "am");
+    sprintf_P(hr, PSTR("%2d %s"), (hour + 11) % 12 + 1, hour >= 12 ? "pm" : "am");
     return hr;
 }
 
