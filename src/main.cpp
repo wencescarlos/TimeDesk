@@ -19,6 +19,9 @@
 #include "time.h"
 #include <SPI.h>
 #include <ESP8266WiFi.h>
+extern "C" {
+#include <user_interface.h>
+}
 
 #include <XPT2046_Touchscreen.h>
 #include "TouchControllerWS.h"
@@ -634,6 +637,9 @@ void runBootUpdate(uint32_t requestedAt) {
     githubUpdater.setCheckTime(requestedAt);   // aún no hay hora NTP
     githubUpdater.reserveBuffers();
     githubUpdater.crumb(F("conectando al WiFi"));
+    // CPU a 160 MHz: la criptografía del saludo TLS tarda la mitad. Al acabar
+    // se reinicia siempre, así que el resto del firmware sigue a 80 MHz.
+    system_update_cpu_freq(SYS_CPU_160MHZ);
     // El panel conserva la imagen: se libera el framebuffer antes de nada
     gfx.freeBuffer();
     Serial.printf_P(PSTR("[OTA-GH] Arranque de actualizacion (heap %u, bloque %u)\n"),
