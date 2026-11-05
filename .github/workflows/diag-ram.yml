@@ -8,11 +8,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
+        with:
+          python-version: '3.12'
       - uses: actions/cache@v4
-        with: { path: ~/.platformio, key: pio-${{ hashFiles('platformio.ini') }} }
+        with:
+          path: ~/.platformio
+          key: pio-${{ hashFiles('platformio.ini') }}
       - run: pip install platformio
       - name: Compilar versión actual
         run: pio run -e nodemcuv2 2>&1 | grep -E "RAM:|Flash:|error|SUCCESS|FAILED"
