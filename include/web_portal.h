@@ -44,6 +44,7 @@ private:
     ConfigManager *configMgr;
     bool apMode;
     bool restartRequested;
+    bool uploadAuthorized = false;   // la subida de firmware en curso tiene permiso
     bool showClockRequested;
     bool updateCheckRequested = false;
     GithubUpdater *updater = nullptr;
@@ -64,6 +65,10 @@ private:
     void handleClock();
     void handleClockSave();
     void handleClockPreview();
+    void handleStatusPage();
+    // Acceso con contraseña (HTTP Basic). Sin contraseña o en modo AP, abierto.
+    bool isAuthorized();
+    bool checkAuth();   // si no hay permiso, pide credenciales y devuelve false
     void handleAutoUpdateSave();
     void handleUpdateCheck();
     void handleUpdateInfo();

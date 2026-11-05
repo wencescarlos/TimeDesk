@@ -41,6 +41,8 @@ public:
         config.autoUpdate = true;
         strlcpy(config.updateRepo, DEFAULT_UPDATE_REPO, sizeof(config.updateRepo));
         config.updateHour = DEFAULT_UPDATE_HOUR;
+        strlcpy(config.webUser, DEFAULT_WEB_USER, sizeof(config.webUser));
+        strlcpy(config.webPass, "", sizeof(config.webPass));
     }
     
     // Corrige valores fuera de rango (p.ej. un intervalo 0 provocaria
@@ -116,6 +118,9 @@ public:
         config.autoUpdate = doc[F("auto_update")] | true;
         strlcpy(config.updateRepo, doc[F("update_repo")] | DEFAULT_UPDATE_REPO, sizeof(config.updateRepo));
         config.updateHour = doc[F("update_hour")] | DEFAULT_UPDATE_HOUR;
+        strlcpy(config.webUser, doc[F("web_user")] | DEFAULT_WEB_USER, sizeof(config.webUser));
+        strlcpy(config.webPass, doc[F("web_pass")] | "", sizeof(config.webPass));
+        if (config.webUser[0] == 0) strlcpy(config.webUser, DEFAULT_WEB_USER, sizeof(config.webUser));
         sanitize();
         
         Serial.println(F("[Config] Configuration loaded successfully"));
@@ -149,6 +154,8 @@ public:
         doc[F("auto_update")] = config.autoUpdate;
         doc[F("update_repo")] = config.updateRepo;
         doc[F("update_hour")] = config.updateHour;
+        doc[F("web_user")] = config.webUser;
+        doc[F("web_pass")] = config.webPass;
         
         File f = LittleFS.open(CONFIG_FILE, "w");
         if (!f) {
