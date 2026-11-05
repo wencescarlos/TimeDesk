@@ -134,7 +134,7 @@ void WebPortal::handleRoot() {
     server.send(200, "text/html", "");
 
     // ── 1. DOCTYPE + CSS (estático, desde flash) ────────────────────────────
-    server.sendContent(F(
+    server.sendContent_P(PSTR(
         "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>TimeDesk</title><style>"
@@ -183,7 +183,7 @@ void WebPortal::handleRoot() {
         "</style></head><body>"));
 
     // ── 2. Cabecera + navegación ─────────────────────────────────────────────
-    server.sendContent(F(
+    server.sendContent_P(PSTR(
         "<div class='header'><h1>&#128338; TimeDesk</h1>"
         "<p>Panel de Configuracion</p></div>"
         "<div class='container'>"
@@ -253,12 +253,12 @@ void WebPortal::handleRoot() {
     }
 
     // ── 6. Tarjeta Zona Horaria (crítica: se envía independiente) ────────────
-    server.sendContent(F(
+    server.sendContent_P(PSTR(
         "<div class='card'><h2>&#128336; Zona Horaria</h2>"
         "<label>Selecciona tu zona horaria</label>"
         "<select name='tz'>"));
     server.sendContent(getTimezoneOptions());   // String pequeño aislado
-    server.sendContent(F("</select></div>"));
+    server.sendContent_P(PSTR("</select></div>"));
 
     // ── 7. Tarjeta configuración de pantalla ─────────────────────────────────
     {
@@ -315,7 +315,7 @@ void WebPortal::handleRoot() {
     }
 
     // ── 9. Botones guardar / restaurar ──────────────────────────────────────
-    server.sendContent(F(
+    server.sendContent_P(PSTR(
         "<button type='submit' class='btn btn-primary'>&#128190; Guardar y Reiniciar</button>"
         "</form>"
         "<form action='/reset' method='POST'>"
@@ -324,7 +324,7 @@ void WebPortal::handleRoot() {
         "&#128465;&#65039; Restaurar valores de fabrica</button></form>"));
 
     // ── 10. JavaScript (WiFi scan) ────────────────────────────────────────────
-    server.sendContent(F(
+    server.sendContent_P(PSTR(
         "</div><script>"
         "function scanWifi(){"
         "document.getElementById('wifiList').innerHTML='<p style=\"color:#adb5bd\">Buscando redes...</p>';"
@@ -393,7 +393,7 @@ void WebPortal::handleStatus() {
 }
 
 void WebPortal::handleSchedule() {
-    server.send(200, "text/html", generateScheduleHTML());
+    streamSchedulePage();
 }
 
 void WebPortal::handleScheduleSave() {
@@ -430,7 +430,7 @@ void WebPortal::handleReset() {
 }
 
 void WebPortal::handleUpdate() {
-    server.send(200, "text/html", generateUpdateHTML());
+    streamUpdatePage();
 }
 
 void WebPortal::handleUpdateUpload() {
@@ -616,8 +616,12 @@ String WebPortal::getTimezoneOptions() {
     return opts;
 }
 
-String WebPortal::generateScheduleHTML() {
-    String html = F("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+void WebPortal::streamSchedulePage() {
+    // Se envía por trozos: construir la página entera en un String necesitaba
+    // el doble de su tamaño en RAM contigua y reiniciaba el ESP8266
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    server.sendContent_P(PSTR("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>TimeDesk · Horario</title>"
         "<style>"
@@ -643,54 +647,57 @@ String WebPortal::generateScheduleHTML() {
         "button:hover{opacity:.9}"
         "a{color:#4cc9f0;display:block;text-align:center;margin-top:14px}"
         ".preview{background:#16213e;border-radius:10px;padding:12px;margin:12px 0;text-align:center;font-size:.95em;color:#adb5bd}"
-        "</style></head><body>");
+        "</style></head><body>"));
     
-    html += F("<div class='card'><h1>⏰ Horario de Pantalla</h1>"
+    server.sendContent_P(PSTR("<div class='card'><h1>⏰ Horario de Pantalla</h1>"
         "<p style='text-align:center;color:#adb5bd;margin-bottom:16px'>Configura cuándo se enciende y apaga la pantalla</p>"
-        "<form action='/schedule-save' method='POST'>");
+        "<form action='/schedule-save' method='POST'>"));
     
-    html += F("<h2>🌅 Encendido</h2>"
+    server.sendContent_P(PSTR("<h2>🌅 Encendido</h2>"
         "<div class='time-row'>"
         "<label>Hora:</label>"
-        "<input type='number' name='scr_on_h' min='0' max='23' value='");
-    html += String(configMgr->config.screenOnHour);
-    html += F("'><span style='color:#adb5bd;margin:0 4px'>:</span>"
-        "<input type='number' name='scr_on_m' min='0' max='59' value='");
-    html += String(configMgr->config.screenOnMinute);
-    html += F("'></div>");
+        "<input type='number' name='scr_on_h' min='0' max='23' value='"));
+    server.sendContent(String(configMgr->config.screenOnHour));
+    server.sendContent_P(PSTR("'><span style='color:#adb5bd;margin:0 4px'>:</span>"
+        "<input type='number' name='scr_on_m' min='0' max='59' value='"));
+    server.sendContent(String(configMgr->config.screenOnMinute));
+    server.sendContent_P(PSTR("'></div>"));
     
-    html += F("<h2>🌙 Apagado</h2>"
+    server.sendContent_P(PSTR("<h2>🌙 Apagado</h2>"
         "<div class='time-row'>"
         "<label>Hora:</label>"
-        "<input type='number' name='scr_off_h' min='0' max='23' value='");
-    html += String(configMgr->config.screenOffHour);
-    html += F("'><span style='color:#adb5bd;margin:0 4px'>:</span>"
-        "<input type='number' name='scr_off_m' min='0' max='59' value='");
-    html += String(configMgr->config.screenOffMinute);
-    html += F("'></div>");
+        "<input type='number' name='scr_off_h' min='0' max='23' value='"));
+    server.sendContent(String(configMgr->config.screenOffHour));
+    server.sendContent_P(PSTR("'><span style='color:#adb5bd;margin:0 4px'>:</span>"
+        "<input type='number' name='scr_off_m' min='0' max='59' value='"));
+    server.sendContent(String(configMgr->config.screenOffMinute));
+    server.sendContent_P(PSTR("'></div>"));
     
-    html += F("<div class='sw-label'><label class='switch'><input type='checkbox' name='scr_sleep'");
-    if (configMgr->config.screenSleepEnabled) html += F(" checked");
-    html += F("><span class='slider'></span></label><span>Activar horario automático</span></div>");
+    server.sendContent_P(PSTR("<div class='sw-label'><label class='switch'><input type='checkbox' name='scr_sleep'"));
+    if (configMgr->config.screenSleepEnabled) server.sendContent_P(PSTR(" checked"));
+    server.sendContent_P(PSTR("><span class='slider'></span></label><span>Activar horario automático</span></div>"));
     
-    html += F("<div class='preview'>Pantalla encendida de <strong>");
-    html += String(configMgr->config.screenOnHour) + String(F(":")) + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute);
-    html += F("</strong> a <strong>");
-    html += String(configMgr->config.screenOffHour) + String(F(":")) + (configMgr->config.screenOffMinute < 10 ? "0" : "") + String(configMgr->config.screenOffMinute);
-    html += F("</strong></div>");
+    server.sendContent_P(PSTR("<div class='preview'>Pantalla encendida de <strong>"));
+    server.sendContent(String(configMgr->config.screenOnHour) + String(F(":")) + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute));
+    server.sendContent_P(PSTR("</strong> a <strong>"));
+    server.sendContent(String(configMgr->config.screenOffHour) + String(F(":")) + (configMgr->config.screenOffMinute < 10 ? "0" : "") + String(configMgr->config.screenOffMinute));
+    server.sendContent_P(PSTR("</strong></div>"));
     
-    html += F("<button type='submit'>💾 Guardar Horario</button>"
+    server.sendContent_P(PSTR("<button type='submit'>💾 Guardar Horario</button>"
         "</form>"
         "<a href='/'>← Inicio</a>"
         "<a href='/clock'>🎨 Estilos de reloj</a>"
         "<a href='/update'>🔄 Actualización OTA</a>"
-        "</div></body></html>");
+        "</div></body></html>"));
     
-    return html;
 }
 
-String WebPortal::generateUpdateHTML() {
-    String html = F("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+void WebPortal::streamUpdatePage() {
+    // Se envía por trozos: construir la página entera en un String necesitaba
+    // el doble de su tamaño en RAM contigua y reiniciaba el ESP8266
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    server.sendContent_P(PSTR("<!DOCTYPE html><html><head><meta charset='UTF-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         "<title>TimeDesk · Actualizaciones</title>"
         "<style>"
@@ -729,9 +736,9 @@ String WebPortal::generateUpdateHTML() {
         ".nav-links a{color:#4cc9f0;text-decoration:none;padding:8px 16px;border:1px solid #4cc9f0;"
         "border-radius:8px;font-size:.9em;transition:all .2s}"
         ".nav-links a:hover{background:#4cc9f0;color:#000}"
-        "</style></head><body>");
+        "</style></head><body>"));
 
-    html += F("<div class='header'><h1>🕒 TimeDesk</h1>"
+    server.sendContent_P(PSTR("<div class='header'><h1>🕒 TimeDesk</h1>"
         "<p>Actualizaciones de firmware</p></div>"
         "<div class='container'>"
         "<div class='nav-links'>"
@@ -740,10 +747,10 @@ String WebPortal::generateUpdateHTML() {
         "<a href='/schedule'>⏰ Horario</a>"
         "<a href='/status'>📊 Estado</a>"
         "<a href='/update'>🔄 OTA</a>"
-        "</div>");
+        "</div>"));
 
     // ── Actualización automática desde GitHub (rellena por JS con /update-info)
-    html += F("<style>"
+    server.sendContent_P(PSTR("<style>"
         ".gh-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:.92em;margin-bottom:12px}"
         ".gh-grid span{color:#adb5bd}.gh-grid b{word-break:break-word}"
         ".sw-row{display:flex;align-items:center;gap:10px;margin:10px 0}"
@@ -796,9 +803,9 @@ String WebPortal::generateUpdateHTML() {
         "}).catch(function(){$('gm').textContent='Trabajando… el dispositivo no responde mientras comprueba o instala.';"
         "if(Date.now()-t0>150000){clearInterval(iv);location.reload()}})},4000)})}"
         "ghLoad(true).catch(function(){$('gm').textContent='No se pudo leer el estado'});"
-        "</script>");
+        "</script>"));
 
-    html += F("<div class='card'>"
+    server.sendContent_P(PSTR("<div class='card'>"
         "<h2>🔄 Actualizar Firmware (manual)</h2>"
         "<div class='warn'>⚠️ <strong>No interrumpas la actualización.</strong> "
         "El dispositivo se reiniciará automáticamente al terminar.</div>"
@@ -863,7 +870,6 @@ String WebPortal::generateUpdateHTML() {
         "xhr.open('POST','/update');"
         "xhr.send(fd);"
         "}"
-        "</script></body></html>");
+        "</script></body></html>"));
 
-    return html;
 }
