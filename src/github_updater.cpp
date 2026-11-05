@@ -308,12 +308,16 @@ struct HttpsGet {
             unsigned long t0 = millis();
             tlsGuardStart();
             bool connected = client.connect(host, 443);
+            uint16_t ticksLeft = tlsGuardTicks;
             tlsGuardStop();
             unsigned long tlsMs = millis() - t0;
+            if (crumbTarget) crumbTarget->crumb(String(F("salto ")) + hop + F(", TLS ") + (connected ? F("conectado") : F("fallido")) +
+                                                F(" en ") + tlsMs + F(" ms, guardian ") + (TLS_GUARD_S * 2 - ticksLeft));
             if (!connected) {
                 error = String(F("Salto ")) + hop + F(": no conecta con ") + host + heapNote();
                 return false;
             }
+            if (crumbTarget) crumbTarget->crumb(String(F("salto ")) + hop + F(", enviando la peticion a ") + host);
             client.print(F("GET "));
             client.print(path);
             client.print(F(" HTTP/1.1\r\nHost: "));

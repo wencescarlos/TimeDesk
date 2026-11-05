@@ -731,7 +731,27 @@ void WebPortal::handleStatusPage() {
     }
     if (n == 0) server.sendContent_P(PSTR("<tr><td colspan='3'>Sin registros todavia</td></tr>"));
     server.sendContent_P(PSTR("</table><p style='margin-top:10px'><small>Si aparecen excepciones, copia la fila "
-        "(sobre todo el codigo 0x...): sirve para localizar el fallo en el programa.</small></p></div>"
+        "(sobre todo el codigo 0x...): sirve para localizar el fallo en el programa.</small></p></div>"));
+
+    // Pila del último fallo (memoria RTC: se pierde al desenchufar)
+    ResetLog::CrashStack cs;
+    if (ResetLog::loadCrashStack(cs)) {
+        s = F("<div class='card'><h2>&#128269; Pila del ultimo fallo</h2><p><small>");
+        s += ResetLog::reasonText(cs.reason);
+        snprintf_P(buf, sizeof(buf), PSTR(" &middot; v%s &middot; codigo 0x%08lx"),
+                   cs.version, (unsigned long)cs.epc1);
+        s += buf;
+        s += F("</small></p><p><code>");
+        for (uint8_t i = 0; i < cs.count; i++) {
+            snprintf_P(buf, sizeof(buf), PSTR("0x%08lx "), (unsigned long)cs.addr[i]);
+            s += buf;
+        }
+        if (cs.count == 0) s += F("(sin direcciones)");
+        s += F("</code></p><p><small>Copia estas direcciones: indican la cadena de llamadas "
+               "que llevo al fallo.</small></p></div>");
+        server.sendContent(s);
+    }
+    server.sendContent_P(PSTR(
         "<p style='text-align:center'><a class='raw' href='/status'>Ver datos en JSON</a></p>"
         "</div></body></html>"));
 }

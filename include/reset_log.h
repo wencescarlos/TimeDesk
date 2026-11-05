@@ -35,6 +35,23 @@ namespace ResetLog {
     // Nombre de la excepción (p.ej. "LoadStoreError")
     const __FlashStringHelper *exceptionText(uint8_t cause);
 
+    // Pila del último fallo (excepción o watchdog de software). La guarda el
+    // gancho custom_crash_callback() del core en la memoria RTC, que sobrevive
+    // al reinicio (no al apagado): direcciones de código halladas en la pila,
+    // de la llamada más reciente a la más antigua. Se traducen a funciones
+    // con el workflow "Compilar" (entrada "direcciones") de la misma versión.
+    static const uint8_t CRASH_ADDRS = 16;
+    struct CrashStack {
+        uint32_t magic;
+        uint32_t reason;
+        uint32_t epc1;
+        uint32_t excvaddr;
+        uint32_t count;
+        uint32_t addr[CRASH_ADDRS];
+        char version[12];
+    };
+    bool loadCrashStack(CrashStack &out);
+
     // Memoria libre mínima vista desde el arranque (llamar a noteHeap() a menudo)
     void noteHeap();
     uint32_t minFreeHeap();
