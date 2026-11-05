@@ -50,6 +50,7 @@ public:
 private:
     GhUpdateStatus st;
     int lastCheckYday = -1;
+    bool rtcLoaded = false;   // la marca de la memoria RTC se lee una vez por arranque
 };
 
 #endif
