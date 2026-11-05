@@ -42,6 +42,7 @@
 #include "weathericons.h"
 #include "clock_styles.h"
 #include "github_updater.h"
+#include "reset_log.h"
 
 
 // =====================================================
@@ -306,6 +307,7 @@ void setup() {
         drawProgress(50, F("Modo configuración AP"));
         delay(500);
         
+        ResetLog::record(0);   // sin hora en modo configuración
         webPortal.beginAP();
         
         // Pantalla de modo AP
@@ -333,6 +335,7 @@ void setup() {
         
         // Loop del portal AP
         while (!webPortal.shouldRestart()) {
+            ResetLog::noteHeap();
             webPortal.handleClient();
             yield();
         }
@@ -352,6 +355,7 @@ void setup() {
     carousel.disableAllIndicators();
     
     initTime();
+    ResetLog::record(time(nullptr));   // motivo del reinicio anterior, con la hora ya sincronizada
     updateData();
     
     timerPress = millis();
@@ -368,6 +372,8 @@ void setup() {
 // =====================================================
 void loop() {
     static bool asleep = false;
+    
+    ResetLog::noteHeap();   // memoria libre mínima desde el arranque (página /estado)
     
     // Atender peticiones web (siempre)
     webPortal.handleClient();
@@ -453,6 +459,12 @@ void loop() {
 // =====================================================
 // PANTALLA DE AJUSTES (TÁCTIL)
 // =====================================================
+// Recuperar el acceso al portal: dos toques en 5 s sobre la línea "Web" de Ajustes
+static unsigned long webPassClearArmedAt = 0;
+static bool webPassClearArmed() {
+    return webPassClearArmedAt && millis() - webPassClearArmedAt < 5000;
+}
+
 void drawSettingsScreen() {
     char buf[8];
     gfx.setFont(ArialRoundedMTBold_14);
@@ -516,9 +528,15 @@ void drawSettingsScreen() {
     // Info de red y ubicación
     gfx.setFont(ArialMT_Plain_10);
     gfx.setColor(MINI_WHITE);
-    gfx.drawString(10, 184, F("Web:"));
-    gfx.setColor(MINI_YELLOW);
-    gfx.drawString(42, 184, F("http://" MDNS_NAME ".local"));
+    if (webPassClearArmed()) {
+        gfx.setColor(MINI_YELLOW);
+        gfx.drawString(10, 184, F("Toca otra vez: quitar clave web"));
+    } else {
+        gfx.drawString(10, 184, F("Web:"));
+        gfx.setColor(MINI_YELLOW);
+        gfx.drawString(42, 184, configManager.config.webPass[0] ? F("http://" MDNS_NAME ".local  (clave)")
+                                                                : F("http://" MDNS_NAME ".local"));
+    }
     gfx.setColor(MINI_WHITE);
     gfx.drawString(10, 197, String(F("IP: ")) + WiFi.localIP().toString());
     gfx.drawString(10, 210, String(F("WiFi: ")) + String(configManager.config.wifiSSID) + String(F(" (")) + String(WiFi.RSSI()) + " dBm)");
@@ -555,6 +573,16 @@ void handleSettingsTouch(TS_Point p) {
         bool up = p.x >= 200;
         uint8_t &h = isOn ? c.screenOnHour : c.screenOffHour;
         h = (h + (up ? 1 : 23)) % 24;
+    } else if (p.y >= 180 && p.y < 197 && c.webPass[0]) {
+        if (webPassClearArmed()) {
+            c.webPass[0] = 0;
+            configManager.save();
+            webPassClearArmedAt = 0;
+            drawProgress(100, F("Portal sin contrasena"));
+            delay(1500);
+        } else {
+            webPassClearArmedAt = millis();   // primer toque: pide confirmación
+        }
     } else if (p.y >= 248 && p.y < 282 && p.x < 120) {
         configManager.save();
         drawProgress(100, F("Configuracion guardada!"));

@@ -12,6 +12,7 @@ Reloj y estación meteorológica de escritorio para **ESP8266** con pantalla tá
 - **Actualización automática diaria** desde las Releases de GitHub, con verificación opcional por firma RSA.
 - **Actualización manual OTA** subiendo el `.bin` desde el navegador.
 - **Menú de ajustes táctil** en el propio dispositivo.
+- **Portal protegido con contraseña** (opcional) y registro de los últimos reinicios en `/estado`.
 - Configuración guardada en JSON en la memoria flash (LittleFS).
 
 ## Hardware
@@ -86,10 +87,25 @@ El nombre `timedesk.local` funciona en Windows 10/11, macOS, iOS, Linux (con Ava
 | `/clock-preview.bmp?s=N` | Captura del estilo N tal como se vería en la pantalla |
 | `/schedule` | Horario de encendido y apagado de la pantalla |
 | `/update` | Actualización automática desde GitHub y subida manual de firmware |
+| `/estado` | Estado: versión, memoria libre (actual y mínima), WiFi y últimos reinicios |
 | `/status` | Estado del dispositivo (JSON) |
 | `/update-info` | Estado de la actualización automática (JSON) |
 | `/scan` | Redes WiFi cercanas (JSON) |
 | `/reset` | Restaurar valores de fábrica |
+
+### Contraseña del portal
+
+Por defecto el portal está abierto a cualquiera de tu red. Para protegerlo, en la página de inicio ve a **Acceso al portal**, escribe un usuario y una contraseña (mínimo 4 caracteres) y pulsa **Guardar y Reiniciar**. A partir de entonces el navegador pedirá esas credenciales en todas las páginas, también para subir firmware.
+
+- En el modo de configuración inicial (red `TimeDesk-Config`) no se pide contraseña: esa red ya tiene la suya.
+- La contraseña del WiFi ya no se muestra en el formulario; si dejas el campo en blanco, se conserva.
+- **Si olvidas la contraseña del portal:** en el reloj, abre **Ajustes** y toca dos veces (en menos de 5 s) la línea **Web**. Se borra la contraseña y el portal vuelve a quedar abierto.
+
+El portal usa HTTP sin cifrar dentro de tu red local, así que la contraseña protege frente a cambios no autorizados, pero no frente a alguien capaz de espiar el tráfico de tu WiFi.
+
+### Registro de reinicios
+
+En `/estado` aparecen los 10 últimos reinicios con su motivo: encendido, reinicio por software (por ejemplo, tras guardar o actualizar), bloqueo (watchdog) o excepción. En las excepciones se muestra el tipo y la dirección del código donde ocurrió (`0x4020…`); si ves alguna, esa dirección permite localizar el fallo. También se muestra la memoria libre mínima desde el arranque: si baja de unos 6 KB, el portal y las actualizaciones pueden fallar.
 
 ## Estilos de reloj
 
@@ -207,6 +223,12 @@ openssl rsa -in ota_private.key -pubout -out ota_public.key
 
 Con la clave pública compilada, el dispositivo rechaza cualquier actualización automática que no esté firmada con tu clave. La subida manual desde `/update` sigue aceptando binarios sin firmar. La primera versión con clave hay que instalarla por USB o con la subida manual.
 
+## Desarrollo
+
+- **Compilación automática:** cada Pull Request se compila en GitHub Actions (`.github/workflows/build.yml`). El resumen muestra la RAM y la flash usadas, y la comprobación falla si la RAM fija supera 43.000 bytes: por encima, el dispositivo se queda sin memoria para el portal y las descargas.
+- **Versiones fijadas:** la plataforma y las librerías tienen versión exacta en `platformio.ini`. Para actualizarlas, cambia la versión y revisa el resultado de la compilación en el Pull Request.
+- **Textos en flash:** en el ESP8266 cada texto entre comillas ocupa RAM salvo que se marque con `F("…")` o `PSTR("…")`. Los datos `PROGMEM` solo se pueden leer con las funciones `_P` o `pgm_read_*`; leerlos como si estuvieran en RAM reinicia el dispositivo, y en el PC no se nota.
+
 ## Configuración avanzada
 
 Constantes de `include/config.h`:
@@ -239,6 +261,7 @@ TimeDesk/
 │   ├── clock_page.h          # Página /clock (guardada en flash)
 │   ├── bmp_writer.h          # Imágenes BMP de las vistas previas
 │   ├── github_updater.h      # Actualización automática desde GitHub
+│   ├── reset_log.h           # Registro de reinicios y memoria mínima
 │   ├── ota_public_key.h      # Clave pública para verificar la firma (opcional)
 │   ├── TouchControllerWS.h   # Controlador y calibración del táctil
 │   ├── TZinfo.h              # Zonas horarias
@@ -250,11 +273,13 @@ TimeDesk/
 │   ├── web_portal.cpp        # Portal web
 │   ├── clock_styles.cpp      # Paletas y dibujo de los estilos de reloj
 │   ├── github_updater.cpp    # Comprobación diaria e instalación desde Releases
+│   ├── reset_log.cpp         # Registro de reinicios en /resets.csv
 │   └── TouchControllerWS.cpp # Táctil
 ├── resources/moonphases/     # Imágenes fuente de las fases lunares
 ├── tools/
 │   └── sign_firmware.py      # Firma de firmware.bin (lo usa el workflow)
 └── .github/workflows/
+    ├── build.yml             # Compila cada Pull Request y comprueba RAM y flash
     └── release.yml           # Compila y publica la Release al crear un tag vX.Y.Z
 ```
 

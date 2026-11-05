@@ -3,6 +3,7 @@
 #include "clock_page.h"
 #include "version.h"
 #include "bmp_writer.h"
+#include "reset_log.h"
 
 // Escapa texto para usarlo dentro de atributos value='...' del HTML
 static String htmlEscape(const char *in) {
@@ -96,23 +97,42 @@ bool WebPortal::consumeShowClockRequest() {
 }
 String WebPortal::getLocalIP() { return apMode ? WiFi.softAPIP().toString() : WiFi.localIP().toString(); }
 
+bool WebPortal::isAuthorized() {
+    const AppConfig &c = configMgr->config;
+    if (apMode || c.webPass[0] == 0) return true;
+    return server.authenticate(c.webUser, c.webPass);
+}
+
+bool WebPortal::checkAuth() {
+    if (isAuthorized()) return true;
+    server.requestAuthentication(BASIC_AUTH, "TimeDesk",
+        F("Hace falta el usuario y la contrasena del portal de TimeDesk"));
+    return false;
+}
+
 void WebPortal::setupRoutes() {
-    server.on("/", HTTP_GET, [this]() { handleRoot(); });
-    server.on("/save", HTTP_POST, [this]() { handleSave(); });
-    server.on("/status", HTTP_GET, [this]() { handleStatus(); });
-    server.on("/schedule", HTTP_GET, [this]() { handleSchedule(); });
-    server.on("/schedule-save", HTTP_POST, [this]() { handleScheduleSave(); });
-    server.on("/scan", HTTP_GET, [this]() { handleScanWifi(); });
-    server.on("/reset", HTTP_POST, [this]() { handleReset(); });
-    server.on("/update", HTTP_GET, [this]() { handleUpdate(); });
-    server.on("/clock", HTTP_GET, [this]() { handleClock(); });
-    server.on("/update-info", HTTP_GET, [this]() { handleUpdateInfo(); });
-    server.on("/update-check", HTTP_POST, [this]() { handleUpdateCheck(); });
-    server.on("/auto-update-save", HTTP_POST, [this]() { handleAutoUpdateSave(); });
-    server.on("/clock-save", HTTP_POST, [this]() { handleClockSave(); });
-    server.on("/clock-preview.bmp", HTTP_GET, [this]() { handleClockPreview(); });
+    // Todas las páginas pasan por checkAuth()
+    auto guard = [this](void (WebPortal::*fn)()) {
+        return [this, fn]() { if (checkAuth()) (this->*fn)(); };
+    };
+    server.on("/", HTTP_GET, guard(&WebPortal::handleRoot));
+    server.on("/save", HTTP_POST, guard(&WebPortal::handleSave));
+    server.on("/status", HTTP_GET, guard(&WebPortal::handleStatus));
+    server.on("/estado", HTTP_GET, guard(&WebPortal::handleStatusPage));
+    server.on("/schedule", HTTP_GET, guard(&WebPortal::handleSchedule));
+    server.on("/schedule-save", HTTP_POST, guard(&WebPortal::handleScheduleSave));
+    server.on("/scan", HTTP_GET, guard(&WebPortal::handleScanWifi));
+    server.on("/reset", HTTP_POST, guard(&WebPortal::handleReset));
+    server.on("/update", HTTP_GET, guard(&WebPortal::handleUpdate));
+    server.on("/clock", HTTP_GET, guard(&WebPortal::handleClock));
+    server.on("/update-info", HTTP_GET, guard(&WebPortal::handleUpdateInfo));
+    server.on("/update-check", HTTP_POST, guard(&WebPortal::handleUpdateCheck));
+    server.on("/auto-update-save", HTTP_POST, guard(&WebPortal::handleAutoUpdateSave));
+    server.on("/clock-save", HTTP_POST, guard(&WebPortal::handleClockSave));
+    server.on("/clock-preview.bmp", HTTP_GET, guard(&WebPortal::handleClockPreview));
     server.on("/update", HTTP_POST,
         [this]() {
+            if (!checkAuth()) return;
             server.sendHeader("Connection", "close");
             if (Update.hasError()) {
                 String err = String("{\"ok\":false,\"error\":\"") + Update.getErrorString() + "\"}";
@@ -191,7 +211,7 @@ void WebPortal::handleRoot() {
         "<a href='/'>&#127968; Inicio</a>"
         "<a href='/clock'>&#127912; Reloj</a>"
         "<a href='/schedule'>&#9200; Horario</a>"
-        "<a href='/status'>&#128202; Estado</a>"
+        "<a href='/estado'>&#128202; Estado</a>"
         "<a href='/update'>&#128260; OTA</a>"
         "</div>"
         "<form action='/save' method='POST'>"));
@@ -207,9 +227,10 @@ void WebPortal::handleRoot() {
         s += htmlEscape(configMgr->config.wifiSSID);
         s += F("' placeholder='Nombre de tu WiFi'>"
             "<label>Contrasena</label>"
-            "<input type='password' name='pass' value='");
-        s += htmlEscape(configMgr->config.wifiPassword);
-        s += F("' placeholder='Contrasena WiFi'></div>");
+            "<input type='password' name='pass' autocomplete='new-password' placeholder='");
+        // La contraseña guardada no se envía al navegador: en blanco se conserva
+        s += configMgr->config.wifiPassword[0] ? F("(sin cambios)") : F("Contrasena WiFi");
+        s += F("'></div>");
         server.sendContent(s);
     }
 
@@ -314,6 +335,30 @@ void WebPortal::handleRoot() {
         server.sendContent(s);
     }
 
+    // ── 8b. Tarjeta de acceso al portal ─────────────────────────────────────
+    {
+        const AppConfig &c = configMgr->config;
+        String s;
+        s += F("<div class='card'><h2>&#128274; Acceso al portal</h2>");
+        if (c.webPass[0]) {
+            s += F("<p style='color:#4cc9f0;margin-bottom:8px'>&#9989; Protegido con contrasena</p>");
+        } else {
+            s += F("<p style='color:#f4a261;margin-bottom:8px'>&#9888;&#65039; Sin contrasena: cualquiera en tu WiFi puede "
+                   "cambiar la configuracion o instalar un firmware.</p>");
+        }
+        s += F("<label>Usuario</label><input type='text' name='web_user' maxlength='23' autocomplete='username' value='");
+        s += htmlEscape(c.webUser);
+        s += F("'><label>Nueva contrasena (minimo 4 caracteres; en blanco no cambia)</label>"
+               "<input type='password' name='web_pass' maxlength='32' autocomplete='new-password'>");
+        if (c.webPass[0]) {
+            s += F("<div class='sw-row'><label class='switch'><input type='checkbox' name='web_nopass'>"
+                   "<span class='slider'></span></label><span>Quitar la contrasena</span></div>");
+        }
+        s += F("<p style='color:#adb5bd;font-size:.85em;margin-top:8px'>Si la olvidas: en el reloj, abre Ajustes y "
+               "toca dos veces la linea \"Web\".</p></div>");
+        server.sendContent(s);
+    }
+
     // ── 9. Botones guardar / restaurar ──────────────────────────────────────
     server.sendContent_P(PSTR(
         "<button type='submit' class='btn btn-primary'>&#128190; Guardar y Reiniciar</button>"
@@ -342,8 +387,16 @@ void WebPortal::handleRoot() {
 }
 
 void WebPortal::handleSave() {
-    if (server.hasArg(F("ssid"))) strlcpy(configMgr->config.wifiSSID, server.arg(F("ssid")).c_str(), sizeof(configMgr->config.wifiSSID));
-    if (server.hasArg(F("pass"))) strlcpy(configMgr->config.wifiPassword, server.arg(F("pass")).c_str(), sizeof(configMgr->config.wifiPassword));
+    if (server.hasArg(F("ssid"))) {
+        String ssid = server.arg(F("ssid"));
+        String pass = server.hasArg(F("pass")) ? server.arg(F("pass")) : String();
+        // Contraseña en blanco = conservar la actual, salvo que se cambie de red
+        // (una red nueva sin contraseña escrita se toma como red abierta)
+        bool sameNetwork = ssid == configMgr->config.wifiSSID;
+        if (pass.length() || !sameNetwork)
+            strlcpy(configMgr->config.wifiPassword, pass.c_str(), sizeof(configMgr->config.wifiPassword));
+        strlcpy(configMgr->config.wifiSSID, ssid.c_str(), sizeof(configMgr->config.wifiSSID));
+    }
     if (server.hasArg(F("api"))) strlcpy(configMgr->config.owmApiKey, server.arg(F("api")).c_str(), sizeof(configMgr->config.owmApiKey));
     if (server.hasArg(F("locid"))) strlcpy(configMgr->config.owmLocationId, server.arg(F("locid")).c_str(), sizeof(configMgr->config.owmLocationId));
     if (server.hasArg(F("locname"))) strlcpy(configMgr->config.locationName, server.arg(F("locname")).c_str(), sizeof(configMgr->config.locationName));
@@ -356,6 +409,15 @@ void WebPortal::handleSave() {
     
     if (server.hasArg(F("update_min"))) configMgr->config.updateIntervalMin = server.arg(F("update_min")).toInt();
     if (server.hasArg(F("brightness"))) configMgr->config.brightness = server.arg(F("brightness")).toInt();
+    
+    // Acceso al portal
+    if (server.hasArg(F("web_user")) && server.arg(F("web_user")).length())
+        strlcpy(configMgr->config.webUser, server.arg(F("web_user")).c_str(), sizeof(configMgr->config.webUser));
+    if (server.hasArg(F("web_nopass"))) {
+        configMgr->config.webPass[0] = 0;
+    } else if (server.hasArg(F("web_pass")) && server.arg(F("web_pass")).length() >= 4) {
+        strlcpy(configMgr->config.webPass, server.arg(F("web_pass")).c_str(), sizeof(configMgr->config.webPass));
+    }
     
     // Screen schedule from main form
     if (server.hasArg(F("scr_on_h"))) configMgr->config.screenOnHour = server.arg(F("scr_on_h")).toInt();
@@ -384,6 +446,9 @@ void WebPortal::handleStatus() {
     json += String(F("\"ip\":\"")) + WiFi.localIP().toString() + "\",";
     json += "\"mdns\":\"" MDNS_NAME ".local\",";
     json += String(F("\"uptime\":")) + String(millis() / 1000) + ",";
+    json += String(F("\"min_heap\":")) + String(ResetLog::minFreeHeap()) + ",";
+    json += String(F("\"reset_reason\":")) + String(ESP.getResetInfoPtr()->reason) + ",";
+    json += String(F("\"version\":\"")) + FIRMWARE_VERSION + "\",";
     json += String(F("\"vcc\":")) + String(ESP.getVcc() / 1024.0) + ",";
     json += String(F("\"scr_on\":\"")) + String(configMgr->config.screenOnHour) + String(F(":")) + (configMgr->config.screenOnMinute < 10 ? "0" : "") + String(configMgr->config.screenOnMinute) + "\",";
     json += String(F("\"clock_style\":")) + String(configMgr->config.clockStyle) + ",";
@@ -435,6 +500,8 @@ void WebPortal::handleUpdate() {
 
 void WebPortal::handleUpdateUpload() {
     HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) uploadAuthorized = isAuthorized();
+    if (!uploadAuthorized) return;   // sin permiso: no se escribe nada en la flash
     if (upload.status == UPLOAD_FILE_START) {
         Serial.printf_P(PSTR("[OTA] Iniciando actualización: %s\n"), upload.filename.c_str());
         if (!Update.begin(ESP.getFreeSketchSpace())) {
@@ -569,6 +636,101 @@ void WebPortal::handleAutoUpdateSave() {
     if (server.hasArg(F("hour"))) c.updateHour = constrain(server.arg(F("hour")).toInt(), 0, 23);
     configMgr->save();
     server.send(200, "application/json", F("{\"ok\":true}"));
+}
+
+void WebPortal::handleStatusPage() {
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "text/html", "");
+    server.sendContent_P(PSTR(
+        "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>TimeDesk · Estado</title><style>"
+        "*{box-sizing:border-box;margin:0;padding:0}"
+        "body{font-family:'Segoe UI',sans-serif;background:#0f0e17;color:#fffffe;min-height:100vh}"
+        ".header{background:linear-gradient(135deg,#16213e,#1a1a2e);padding:24px;text-align:center;border-bottom:2px solid #4cc9f0}"
+        ".header h1{font-size:1.6em;color:#4cc9f0}.header p{color:#adb5bd;margin-top:6px}"
+        ".container{max-width:620px;margin:0 auto;padding:16px}"
+        ".card{background:#1a1a2e;border-radius:14px;padding:20px;margin:12px 0;box-shadow:0 4px 20px rgba(0,0,0,.3)}"
+        ".card h2{color:#e0aaff;font-size:1.1em;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #333}"
+        ".nav-links{display:flex;gap:10px;justify-content:center;margin:16px 0;flex-wrap:wrap}"
+        ".nav-links a{color:#4cc9f0;text-decoration:none;padding:8px 16px;border:1px solid #4cc9f0;border-radius:8px;font-size:.9em}"
+        ".grid{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:.95em}"
+        ".grid span{color:#adb5bd}.grid b{word-break:break-word}"
+        "table{width:100%;border-collapse:collapse;font-size:.85em}"
+        "th,td{text-align:left;padding:7px 6px;border-bottom:1px solid #2a2a40;vertical-align:top}"
+        "th{color:#adb5bd;font-weight:normal}"
+        ".bad{color:#ff6b6b}small{color:#adb5bd}code{font-size:.95em}"
+        "a.raw{color:#4cc9f0;font-size:.85em}"
+        "</style></head><body>"
+        "<div class='header'><h1>&#128338; TimeDesk</h1><p>Estado del dispositivo</p></div>"
+        "<div class='container'>"
+        "<div class='nav-links'><a href='/'>&#127968; Inicio</a><a href='/clock'>&#127912; Reloj</a>"
+        "<a href='/schedule'>&#9200; Horario</a><a href='/estado'>&#128202; Estado</a><a href='/update'>&#128260; OTA</a></div>"
+        "<div class='card'><h2>&#128202; Ahora</h2><div class='grid'>"));
+
+    char buf[64];
+    String s;
+    uint32_t up = millis() / 1000;
+    snprintf_P(buf, sizeof(buf), PSTR("%lud %02luh %02lum"), (unsigned long)(up / 86400),
+               (unsigned long)((up / 3600) % 24), (unsigned long)((up / 60) % 60));
+    s += F("<span>Version</span><b>" FIRMWARE_VERSION "</b>");
+    s += F("<span>Encendido</span><b>"); s += buf; s += F("</b>");
+    s += F("<span>Memoria libre</span><b>"); s += String(ESP.getFreeHeap() / 1024.0, 1);
+    s += F(" KB</b><span>Minima desde el arranque</span><b>"); s += String(ResetLog::minFreeHeap() / 1024.0, 1);
+    s += F(" KB</b><span>Bloque libre mayor</span><b>"); s += String(ESP.getMaxFreeBlockSize() / 1024.0, 1);
+    s += F(" KB</b><span>WiFi</span><b>"); s += htmlEscape(configMgr->config.wifiSSID);
+    s += F(" ("); s += String(WiFi.RSSI()); s += F(" dBm)</b><span>Direccion</span><b>http://");
+    s += WiFi.localIP().toString(); s += F(" &middot; " MDNS_NAME ".local</b>");
+    s += F("<span>Portal</span><b>");
+    s += configMgr->config.webPass[0] ? F("Protegido con contrasena") : F("Sin contrasena");
+    s += F("</b>");
+    if (updater && updater->status().lastCheck) {
+        s += F("<span>Ultima actualizacion</span><b>");
+        s += GithubUpdater::resultText(updater->status().result);
+        if (updater->status().message.length()) {
+            s += F(" &middot; ");
+            s += htmlEscape(updater->status().message.c_str());
+        }
+        s += F("</b>");
+    }
+    s += F("</div></div>");
+    server.sendContent(s);
+
+    // Registro de reinicios (más reciente primero)
+    server.sendContent_P(PSTR("<div class='card'><h2>&#128260; Ultimos reinicios</h2>"
+        "<table><tr><th>Fecha</th><th>Motivo</th><th>Version</th></tr>"));
+    ResetLog::Entry entries[ResetLog::MAX_ENTRIES];
+    uint8_t n = ResetLog::load(entries, ResetLog::MAX_ENTRIES);
+    for (uint8_t i = 0; i < n; i++) {
+        const ResetLog::Entry &e = entries[i];
+        s = F("<tr><td>");
+        if (e.epoch >= NTP_MIN_VALID_EPOCH) {
+            time_t t = e.epoch;
+            strftime(buf, sizeof(buf), "%d/%m %H:%M", localtime(&t));
+            s += buf;
+        } else {
+            s += F("&mdash;");
+        }
+        bool bad = e.reason == REASON_EXCEPTION_RST || e.reason == REASON_WDT_RST || e.reason == REASON_SOFT_WDT_RST;
+        s += bad ? F("</td><td class='bad'>") : F("</td><td>");
+        s += ResetLog::reasonText(e.reason);
+        if (e.reason == REASON_EXCEPTION_RST) {
+            snprintf_P(buf, sizeof(buf), PSTR("<br><small>Excepcion %u: "), e.exccause);
+            s += buf;
+            s += ResetLog::exceptionText(e.exccause);
+            snprintf_P(buf, sizeof(buf), PSTR("<br>codigo <code>0x%08lx</code></small>"), (unsigned long)e.epc1);
+            s += buf;
+        }
+        s += F("</td><td>");
+        s += e.version;
+        s += F("</td></tr>");
+        server.sendContent(s);
+    }
+    if (n == 0) server.sendContent_P(PSTR("<tr><td colspan='3'>Sin registros todavia</td></tr>"));
+    server.sendContent_P(PSTR("</table><p style='margin-top:10px'><small>Si aparecen excepciones, copia la fila "
+        "(sobre todo el codigo 0x...): sirve para localizar el fallo en el programa.</small></p></div>"
+        "<p style='text-align:center'><a class='raw' href='/status'>Ver datos en JSON</a></p>"
+        "</div></body></html>"));
 }
 
 void WebPortal::handleNotFound() {
@@ -745,7 +907,7 @@ void WebPortal::streamUpdatePage() {
         "<a href='/'>🏠 Inicio</a>"
         "<a href='/clock'>🎨 Reloj</a>"
         "<a href='/schedule'>⏰ Horario</a>"
-        "<a href='/status'>📊 Estado</a>"
+        "<a href='/estado'>📊 Estado</a>"
         "<a href='/update'>🔄 OTA</a>"
         "</div>"));
 

@@ -54,7 +54,7 @@ input[type=range]{width:100%;accent-color:#4cc9f0;margin:8px 0}
 </style></head><body>
 <div class='header'><h1>&#127912; Estilos de reloj</h1><p>Vistas previas reales de tu TimeDesk · los cambios se aplican al instante</p></div>
 <div class='container'>
-<div class='nav-links'><a href='/'>&#127968; Inicio</a><a href='/clock'>&#127912; Reloj</a><a href='/schedule'>&#9200; Horario</a><a href='/status'>&#128202; Estado</a><a href='/update'>&#128260; OTA</a></div>
+<div class='nav-links'><a href='/'>&#127968; Inicio</a><a href='/clock'>&#127912; Reloj</a><a href='/schedule'>&#9200; Horario</a><a href='/estado'>&#128202; Estado</a><a href='/update'>&#128260; OTA</a></div>
 <div class='card'><h2>&#9200; Elige un estilo</h2><div id='groups'></div></div>
 <div class='card'><h2>&#9881;&#65039; Opciones de pantalla</h2>
 <div class='sw-row'><label class='switch'><input type='checkbox' id='start'><span class='slider'></span></label><span>Arrancar en el reloj a pantalla completa</span></div>
