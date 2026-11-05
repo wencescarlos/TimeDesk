@@ -5,11 +5,8 @@
 #include "version.h"
 #include "ota_public_key.h"
 #include <ESP8266WiFi.h>
-#include <ESP8266HTTPClient.h>
 #include <Updater.h>
 #include <WiFiClientSecureBearSSL.h>
-
-static const char USER_AGENT[] = "TimeDesk-ESP8266";
 
 // ¿Contiene el texto 'needle' (en RAM) al texto 'hay' guardado en flash?
 // Los datos PROGMEM solo pueden leerse con pgm_read_*: leerlos como RAM
@@ -109,6 +106,174 @@ bool GithubUpdater::isDue(const AppConfig &cfg) {
     return true;
 }
 
+// ── Cliente HTTPS mínimo ────────────────────────────────────────────────────
+// GitHub sirve los ficheros de las Releases tras dos redirecciones; la última
+// lleva a una URL firmada de ~900 caracteres. HTTPClient copia esa cabecera en
+// varios String mientras la conexión TLS ocupa ~25 KB: si alguna copia no cabe
+// en memoria se queda vacía sin avisar, no sigue la redirección y devuelve 302.
+// Además, cada 302 de github.com trae una cabecera Content-Security-Policy de
+// ~4.000 caracteres: HTTPClient la copia entera (y sus partes) en String.
+// Este cliente lee las cabeceras línea a línea en un único búfer fijo,
+// recorta las que no necesita, cierra cada conexión antes de seguir la
+// redirección y explica cualquier fallo.
+namespace {
+
+const size_t URL_MAX  = 1536;   // URLs firmadas de GitHub: ~900 caracteres
+const size_t LINE_MAX = 1536;
+const uint32_t NET_TIMEOUT_MS = 15000;
+const uint8_t MAX_HOPS = 6;
+
+String heapNote() {
+    return String(F(" (memoria ")) + String(ESP.getFreeHeap() / 1024) + F(" KB)");
+}
+
+struct HttpsGet {
+    BearSSL::WiFiClientSecure client;
+    char *url = nullptr;           // URL actual (se reutiliza para la redirección)
+    char *line = nullptr;          // última línea de cabecera leída
+    char host[96] = {0};
+    bool truncated = false;        // la última línea no cabía y se ha recortado
+    int code = 0;
+    long length = -1;              // Content-Length (-1 si no viene)
+    uint8_t hop = 0;
+    String error;
+
+    bool init() {
+        url = (char *)malloc(URL_MAX);
+        line = (char *)malloc(LINE_MAX);
+        if (!url || !line) { error = String(F("Sin memoria para la descarga")) + heapNote(); return false; }
+        return true;
+    }
+    ~HttpsGet() { client.stop(); free(url); free(line); }
+
+    // Lee una línea terminada en \n (sin \r). Si no cabe en el búfer se
+    // guarda el principio y se marca 'truncated'. false si se agota el tiempo
+    // o se cierra la conexión sin datos.
+    bool readLine() {
+        size_t n = 0;
+        bool overflow = false;
+        unsigned long last = millis();
+        for (;;) {
+            if (client.available()) {
+                int c = client.read();
+                if (c < 0) continue;
+                last = millis();
+                if (c == '\n') break;
+                if (c == '\r') continue;
+                if (n < LINE_MAX - 1) line[n++] = (char)c; else overflow = true;
+            } else if (!client.connected()) {
+                if (n == 0) { error = String(F("Conexion cerrada por ")) + host; return false; }
+                break;
+            } else if (millis() - last > NET_TIMEOUT_MS) {
+                error = String(F("Sin respuesta de ")) + host;
+                return false;
+            } else {
+                delay(1);
+            }
+        }
+        line[n] = 0;
+        truncated = overflow;
+        return true;
+    }
+
+    // Abre la URL siguiendo redirecciones. Si devuelve true, 'code' y 'length'
+    // están listos y el cuerpo de la respuesta se puede leer con readBody().
+    bool open(const String &startUrl) {
+        if (startUrl.length() >= URL_MAX) { error = F("URL demasiado larga"); return false; }
+        strlcpy(url, startUrl.c_str(), URL_MAX);
+        for (hop = 1; hop <= MAX_HOPS; hop++) {
+            if (strncmp_P(url, PSTR("https://"), 8) != 0) { error = F("La redireccion no es https"); return false; }
+            const char *h = url + 8;
+            const char *slash = strchr(h, '/');
+            size_t hl = slash ? (size_t)(slash - h) : strlen(h);
+            if (hl == 0 || hl >= sizeof(host)) { error = F("Servidor no valido en la URL"); return false; }
+            memcpy(host, h, hl);
+            host[hl] = 0;
+            const char *path = slash ? slash : "/";
+
+            client.stop();                     // libera la conexión del salto anterior
+            client.setInsecure();              // la autenticidad la da la firma RSA, no el canal
+            client.setTimeout(NET_TIMEOUT_MS);
+            if (!client.connect(host, 443)) {
+                error = String(F("Salto ")) + hop + F(": no conecta con ") + host + heapNote();
+                return false;
+            }
+            client.print(F("GET "));
+            client.print(path);
+            client.print(F(" HTTP/1.1\r\nHost: "));
+            client.print(host);
+            client.print(F("\r\nUser-Agent: TimeDesk-ESP8266\r\nAccept: */*\r\nConnection: close\r\n\r\n"));
+
+            // Línea de estado: "HTTP/1.1 302 Found"
+            if (!readLine()) { error = String(F("Salto ")) + hop + F(": ") + error + heapNote(); return false; }
+            if (strncmp_P(line, PSTR("HTTP/1."), 7) != 0 || strlen(line) < 12) {
+                error = String(F("Respuesta no valida de ")) + host;
+                return false;
+            }
+            code = atoi(line + 9);
+            length = -1;
+            bool hasLocation = false, chunked = false;
+            for (;;) {
+                if (!readLine()) { error = String(F("Salto ")) + hop + F(": ") + error + heapNote(); return false; }
+                if (line[0] == 0) break;                       // fin de cabeceras
+                char *colon = strchr(line, ':');
+                if (!colon) continue;
+                *colon = 0;
+                char *v = colon + 1;
+                while (*v == ' ' || *v == '\t') v++;
+                if (strcasecmp_P(line, PSTR("location")) == 0) {
+                    if (truncated) { error = F("Redireccion demasiado larga"); return false; }
+                    if (v[0] == '/') {                          // relativa: mismo servidor
+                        if (8 + strlen(host) + strlen(v) >= URL_MAX) { error = F("Redireccion demasiado larga"); return false; }
+                        snprintf_P(url, URL_MAX, PSTR("https://%s%s"), host, v);
+                    } else {
+                        if (strlen(v) >= URL_MAX) { error = F("Redireccion demasiado larga"); return false; }
+                        strlcpy(url, v, URL_MAX);
+                    }
+                    hasLocation = true;
+                } else if (strcasecmp_P(line, PSTR("content-length")) == 0) {
+                    length = atol(v);
+                } else if (strcasecmp_P(line, PSTR("transfer-encoding")) == 0 && strstr_P(v, PSTR("chunked"))) {
+                    chunked = true;
+                }
+            }
+            if (code == 301 || code == 302 || code == 303 || code == 307 || code == 308) {
+                if (!hasLocation) {
+                    error = String(F("Salto ")) + hop + F(": HTTP ") + code + F(" sin destino desde ") + host;
+                    return false;
+                }
+                continue;                                       // siguiente salto
+            }
+            if (code == 200 && chunked) { error = String(F("Respuesta troceada no soportada de ")) + host; return false; }
+            return true;
+        }
+        error = F("Demasiadas redirecciones");
+        return false;
+    }
+
+    // Lee hasta 'len' bytes del cuerpo. Devuelve los leídos (menos si se corta).
+    size_t readBody(uint8_t *buf, size_t len) {
+        size_t got = 0;
+        unsigned long last = millis();
+        while (got < len) {
+            int avail = client.available();
+            if (avail > 0) {
+                int n = client.read(buf + got, (size_t)avail < len - got ? (size_t)avail : len - got);
+                if (n > 0) { got += n; last = millis(); }
+            } else if (!client.connected()) {
+                break;
+            } else if (millis() - last > NET_TIMEOUT_MS) {
+                break;
+            } else {
+                delay(1);
+            }
+        }
+        return got;
+    }
+};
+
+}  // namespace
+
 GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     st.lastCheck = time(nullptr);
     st.latestVersion = "";
@@ -126,33 +291,26 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
     Serial.printf_P(PSTR("[OTA-GH] Comprobando %sversion.txt (heap %u)\n"), base.c_str(), ESP.getFreeHeap());
 
     // ── 1. Versión publicada ────────────────────────────────────────────────
-    // HTTPS sin validar el certificado: la autenticidad del firmware la
-    // garantiza la firma RSA (si está configurada), no el canal.
     {
-        BearSSL::WiFiClientSecure client;
-        client.setInsecure();
-        HTTPClient http;
-        http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-        http.setUserAgent(USER_AGENT);
-        http.setTimeout(15000);
-        if (!http.begin(client, base + F("version.txt"))) {
-            st.message = F("No se pudo iniciar la conexion");
+        HttpsGet g;
+        if (!g.init() || !g.open(base + F("version.txt"))) {
+            st.message = g.error;
             return st.result = GH_NETWORK_ERROR;
         }
-        int code = http.GET();
-        if (code == HTTP_CODE_NOT_FOUND) {
-            http.end();
+        if (g.code == 404) {
             st.message = F("El repositorio no tiene Releases con version.txt");
             return st.result = GH_NO_RELEASE;
         }
-        if (code != HTTP_CODE_OK) {
-            st.message = String(F("HTTP ")) + code + String(F(" ")) + (code < 0 ? HTTPClient::errorToString(code) : String());
-            http.end();
+        if (g.code != 200) {
+            st.message = String(F("version.txt: HTTP ")) + g.code + F(" de ") + g.host;
             return st.result = GH_NETWORK_ERROR;
         }
-        st.latestVersion = http.getString();
-        http.end();
-    }
+        char v[24];
+        size_t want = (g.length > 0 && g.length < (long)sizeof(v)) ? (size_t)g.length : sizeof(v) - 1;
+        size_t n = g.readBody((uint8_t *)v, want);
+        v[n] = 0;
+        st.latestVersion = v;
+    }   // aquí se cierra la conexión y se libera su memoria
     st.latestVersion.trim();
     if (!validVersion(st.latestVersion)) {
         st.message = F("version.txt no tiene formato X.Y.Z");
@@ -181,41 +339,34 @@ GhUpdateResult GithubUpdater::run(const AppConfig &cfg) {
         Update.installSignature(hash, verifier);   // rechaza binarios sin firma válida
     }
 
-    // Descarga con el mismo cliente HTTP/1.1 que version.txt (ESPhttpUpdate
-    // fuerza HTTP/1.0 y GitHub lo redirige a otro servidor de descargas que
-    // respondía con un código inesperado)
     String error;
     {
-        BearSSL::WiFiClientSecure client;
-        client.setInsecure();
-        HTTPClient http;
-        http.setFollowRedirects(HTTPC_FORCE_FOLLOW_REDIRECTS);
-        http.setUserAgent(USER_AGENT);
-        http.setTimeout(15000);
-        if (!http.begin(client, base + F("firmware.bin"))) {
-            error = F("No se pudo iniciar la descarga");
+        HttpsGet g;
+        if (!g.init() || !g.open(base + F("firmware.bin"))) {
+            error = g.error;
+        } else if (g.code != 200) {
+            error = String(F("firmware.bin: HTTP ")) + g.code + F(" de ") + g.host;
+        } else if (g.length <= 0) {
+            error = F("Descarga sin tamano conocido");
+        } else if (!Update.begin(g.length)) {
+            error = String(F("Sin espacio: ")) + Update.getErrorString();
         } else {
-            int code = http.GET();
-            int len = http.getSize();
-            if (code != HTTP_CODE_OK) {
-                error = String(F("Descarga: HTTP ")) + code +
-                        (code < 0 ? String(F(" ")) + HTTPClient::errorToString(code) : String());
-            } else if (len <= 0) {
-                error = F("Descarga sin tamaño conocido");
-            } else if (!Update.begin(len)) {
-                error = String(F("Sin espacio: ")) + Update.getErrorString();
-            } else {
-                Serial.printf_P(PSTR("[OTA-GH] Descargando %d bytes\n"), len);
-                size_t written = Update.writeStream(*http.getStreamPtr());
-                if (written != (size_t)len) {
-                    error = String(F("Descarga incompleta: ")) + written + F(" de ") + len + F(" bytes");
-                    Update.end();   // incompleta: end() sin argumento la descarta; el firmware actual sigue intacto
-                } else if (!Update.end()) {
-                    // Aquí se rechaza un binario sin la firma correcta
-                    error = String(F("Verificación: ")) + Update.getErrorString();
-                }
+            Serial.printf_P(PSTR("[OTA-GH] Descargando %ld bytes de %s\n"), g.length, g.host);
+            uint8_t buf[1024];
+            long remaining = g.length;
+            while (remaining > 0) {
+                size_t n = g.readBody(buf, remaining < (long)sizeof(buf) ? (size_t)remaining : sizeof(buf));
+                if (n == 0) break;                            // corte o tiempo agotado
+                if (Update.write(buf, n) != n) break;
+                remaining -= n;
+                yield();
             }
-            http.end();
+            if (remaining > 0) {
+                error = String(F("Descarga incompleta: ")) + (g.length - remaining) + F(" de ") + g.length + F(" bytes");
+                Update.end();   // incompleta: end() sin argumento la descarta; el firmware actual sigue intacto
+            } else if (!Update.end()) {
+                error = String(F("Verificacion: ")) + Update.getErrorString();   // p.ej. firma no válida
+            }
         }
     }
     Update.installSignature(nullptr, nullptr);   // la subida manual (/update) no exige firma
