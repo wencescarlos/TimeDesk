@@ -195,35 +195,39 @@ const uint8_t MAX_HOPS = 6;
 // ceder la CPU y el saludo completo puede pasar de 6 s. El watchdog de
 // software (~3 s) reiniciaba el equipo, y si solo se para, el de hardware
 // salta a los ~6 s porque nadie lo alimenta. Mientras dura client.connect()
-// se para el de software y una interrupción del temporizador 1 alimenta el
+// se para el de software y una interrupción del temporizador 0 alimenta el
 // de hardware cada 0,5 s, con un límite propio: pasados TLS_GUARD_S segundos
 // deja de alimentarlo y el watchdog reinicia el equipo igualmente.
-// El temporizador 1 lo usa también el PWM del brillo, que lo deja como NMI:
-// solo se puede usar en un arranque en el que no se haya llamado a
-// analogWrite() (el de actualización: setup() aplica el brillo después).
+// Se usa el temporizador 0 (comparador de ciclos de la CPU) y no el 1: el
+// PWM del brillo deja el 1 enrutado como NMI, incluso tras ESP.restart(), y
+// la interrupción saltaba a una dirección inválida (1.4.8 y 1.4.9).
 static const uint16_t TLS_GUARD_S = 40;
 static volatile uint16_t tlsGuardTicks = 0;
+static uint32_t tlsGuardPeriod = 0;   // ciclos de CPU en 0,5 s
 
 static void IRAM_ATTR tlsGuardIsr() {
     if (tlsGuardTicks) {
         tlsGuardTicks--;
         WDT_FEED();
+        timer0_write(ESP.getCycleCount() + tlsGuardPeriod);
     }
 }
 
 void tlsGuardStart() {
+    tlsGuardPeriod = (uint32_t)ESP.getCpuFreqMHz() * 500000UL;
     tlsGuardTicks = TLS_GUARD_S * 2;
-    timer1_attachInterrupt(tlsGuardIsr);
-    timer1_enable(TIM_DIV256, TIM_EDGE, TIM_LOOP);   // 80 MHz / 256 = 312,5 kHz
-    timer1_write(156250);                            // 0,5 s
+    noInterrupts();
+    timer0_isr_init();
+    timer0_attachInterrupt(tlsGuardIsr);
+    timer0_write(ESP.getCycleCount() + tlsGuardPeriod);
+    interrupts();
     ESP.wdtDisable();
 }
 
 void tlsGuardStop() {
     ESP.wdtEnable(0);
-    timer1_disable();
-    timer1_detachInterrupt();
     tlsGuardTicks = 0;
+    timer0_detachInterrupt();
 }
 
 String heapNote() {
